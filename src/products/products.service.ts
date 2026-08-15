@@ -113,20 +113,28 @@ export class ProductsService {
       const nextPrice = dto.price ?? Number(existing.price);
       const nextOriginalPrice =
         dto.originalPrice ??
-        (existing.originalPrice === null ? undefined : Number(existing.originalPrice));
+        (existing.originalPrice === null
+          ? undefined
+          : Number(existing.originalPrice));
       this.assertOriginalPriceIsValid(nextPrice, nextOriginalPrice);
     }
 
     try {
       const product = await this.productsRepository.update(id, {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
         ...(dto.price !== undefined ? { price: dto.price } : {}),
-        ...(dto.originalPrice !== undefined ? { originalPrice: dto.originalPrice } : {}),
+        ...(dto.originalPrice !== undefined
+          ? { originalPrice: dto.originalPrice }
+          : {}),
         ...(dto.images !== undefined ? { images: dto.images } : {}),
         ...(dto.badge !== undefined ? { badge: dto.badge } : {}),
         ...(dto.inStock !== undefined ? { inStock: dto.inStock } : {}),
-        ...(dto.stockQuantity !== undefined ? { stockQuantity: dto.stockQuantity } : {}),
+        ...(dto.stockQuantity !== undefined
+          ? { stockQuantity: dto.stockQuantity }
+          : {}),
         ...(dto.categoryId !== undefined
           ? { category: { connect: { id: dto.categoryId } } }
           : {}),
@@ -151,9 +159,7 @@ export class ProductsService {
 
   private assertOriginalPriceIsValid(price: number, originalPrice?: number) {
     if (originalPrice !== undefined && originalPrice <= price) {
-      throw new BadRequestException(
-        'originalPrice must be greater than price',
-      );
+      throw new BadRequestException('originalPrice must be greater than price');
     }
   }
 

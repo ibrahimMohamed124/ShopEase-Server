@@ -29,7 +29,10 @@ export class CreateProductDto {
   description: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Price must be a valid amount' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Price must be a valid amount' },
+  )
   @IsPositive({ message: 'Price must be greater than 0' })
   price: number;
 
@@ -37,7 +40,10 @@ export class CreateProductDto {
   // (مش هنا) عشان محتاجين نقارنها بـ price نفسه مش بس نتأكد إنها رقم موجب.
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Original price must be a valid amount' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Original price must be a valid amount' },
+  )
   @IsPositive({ message: 'Original price must be greater than 0' })
   originalPrice?: number;
 

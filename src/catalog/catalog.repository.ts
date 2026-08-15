@@ -31,7 +31,9 @@ export class CatalogRepository {
     });
   }
 
-  createCategory(data: Prisma.CategoryCreateInput): Promise<CategoryWithRelations> {
+  createCategory(
+    data: Prisma.CategoryCreateInput,
+  ): Promise<CategoryWithRelations> {
     return this.prisma.category.create({ data, include: CATEGORY_INCLUDE });
   }
 
@@ -47,7 +49,10 @@ export class CatalogRepository {
   }
 
   removeCategory(id: string): Promise<CategoryWithRelations> {
-    return this.prisma.category.delete({ where: { id }, include: CATEGORY_INCLUDE });
+    return this.prisma.category.delete({
+      where: { id },
+      include: CATEGORY_INCLUDE,
+    });
   }
 
   findSubcategories(categoryId: string) {

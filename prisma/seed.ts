@@ -104,7 +104,8 @@ const products: ProductSeed[] = [
     categoryId: 'electronics',
     rating: 4.8,
     reviewCount: 2341,
-    imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&q=80',
     badge: 'Sale',
     inStock: true,
   },
@@ -118,7 +119,8 @@ const products: ProductSeed[] = [
     categoryId: 'fashion',
     rating: 4.6,
     reviewCount: 1876,
-    imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&q=80',
     badge: 'Hot',
     inStock: true,
   },
@@ -132,7 +134,8 @@ const products: ProductSeed[] = [
     categoryId: 'electronics',
     rating: 4.9,
     reviewCount: 5120,
-    imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&q=80',
     badge: 'New',
     inStock: true,
   },
@@ -145,7 +148,8 @@ const products: ProductSeed[] = [
     categoryId: 'accessories',
     rating: 4.7,
     reviewCount: 432,
-    imageUrl: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80',
     inStock: true,
   },
   {
@@ -158,7 +162,8 @@ const products: ProductSeed[] = [
     categoryId: 'electronics',
     rating: 4.7,
     reviewCount: 3201,
-    imageUrl: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&q=80',
     badge: 'Sale',
     inStock: true,
   },
@@ -170,7 +175,8 @@ const products: ProductSeed[] = [
     categoryId: 'fashion',
     rating: 4.5,
     reviewCount: 8902,
-    imageUrl: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1542272604-787c3835535d?w=600&q=80',
     inStock: true,
   },
   {
@@ -183,7 +189,8 @@ const products: ProductSeed[] = [
     categoryId: 'electronics',
     rating: 4.8,
     reviewCount: 1560,
-    imageUrl: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=600&q=80',
     badge: 'Sale',
     inStock: true,
   },
@@ -196,7 +203,8 @@ const products: ProductSeed[] = [
     categoryId: 'accessories',
     rating: 4.6,
     reviewCount: 720,
-    imageUrl: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&q=80',
     inStock: true,
   },
   {
@@ -209,7 +217,8 @@ const products: ProductSeed[] = [
     categoryId: 'sports',
     rating: 4.7,
     reviewCount: 945,
-    imageUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=600&q=80',
     badge: 'New',
     inStock: true,
   },
@@ -222,7 +231,8 @@ const products: ProductSeed[] = [
     categoryId: 'sports',
     rating: 4.4,
     reviewCount: 2870,
-    imageUrl: 'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1575311373937-040b8e1fd5b6?w=600&q=80',
     inStock: false,
   },
   {
@@ -234,7 +244,8 @@ const products: ProductSeed[] = [
     categoryId: 'home',
     rating: 4.3,
     reviewCount: 1234,
-    imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=600&q=80',
     inStock: true,
   },
   {
@@ -242,11 +253,13 @@ const products: ProductSeed[] = [
     name: 'Yoga Mat Pro',
     price: 79.99,
     originalPrice: 99.99,
-    description: 'Eco-friendly yoga mat with anti-slip surface and comfort support.',
+    description:
+      'Eco-friendly yoga mat with anti-slip surface and comfort support.',
     categoryId: 'sports',
     rating: 4.6,
     reviewCount: 3411,
-    imageUrl: 'https://images.unsplash.com/photo-1601925228133-2e0f0450b272?w=600&q=80',
+    imageUrl:
+      'https://images.unsplash.com/photo-1601925228133-2e0f0450b272?w=600&q=80',
     badge: 'Sale',
     inStock: true,
   },

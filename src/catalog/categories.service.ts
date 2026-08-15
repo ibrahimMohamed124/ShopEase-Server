@@ -68,7 +68,10 @@ export class CategoriesService {
     }
   }
 
-  async updateCategory(id: string, dto: UpdateCategoryDto): Promise<CategoryResponse> {
+  async updateCategory(
+    id: string,
+    dto: UpdateCategoryDto,
+  ): Promise<CategoryResponse> {
     await this.ensureCategoryExists(id);
 
     try {
@@ -96,8 +99,11 @@ export class CategoriesService {
 
   async findSubcategories(categoryId: string): Promise<SubcategoryResponse[]> {
     await this.ensureCategoryExists(categoryId);
-    const subcategories = await this.catalogRepository.findSubcategories(categoryId);
-    return subcategories.map((subcategory) => this.toSubcategoryResponse(subcategory));
+    const subcategories =
+      await this.catalogRepository.findSubcategories(categoryId);
+    return subcategories.map((subcategory) =>
+      this.toSubcategoryResponse(subcategory),
+    );
   }
 
   async createSubcategory(
@@ -128,17 +134,23 @@ export class CategoriesService {
     await this.ensureSubcategoryBelongsToCategory(categoryId, subcategoryId);
 
     try {
-      const subcategory = await this.catalogRepository.updateSubcategory(subcategoryId, {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl } : {}),
-      });
+      const subcategory = await this.catalogRepository.updateSubcategory(
+        subcategoryId,
+        {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl } : {}),
+        },
+      );
       return this.toSubcategoryResponse(subcategory);
     } catch (error) {
       throw this.mapUniqueNameError(error, 'Subcategory');
     }
   }
 
-  async removeSubcategory(categoryId: string, subcategoryId: string): Promise<void> {
+  async removeSubcategory(
+    categoryId: string,
+    subcategoryId: string,
+  ): Promise<void> {
     await this.ensureSubcategoryBelongsToCategory(categoryId, subcategoryId);
 
     try {
@@ -159,27 +171,38 @@ export class CategoriesService {
     categoryId: string,
     subcategoryId: string,
   ): Promise<void> {
-    const subcategory = await this.catalogRepository.findSubcategoryById(subcategoryId);
+    const subcategory =
+      await this.catalogRepository.findSubcategoryById(subcategoryId);
     if (!subcategory || subcategory.categoryId !== categoryId) {
       throw new NotFoundException('Subcategory not found');
     }
   }
 
   private mapUniqueNameError(error: unknown, entity: string): Error {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
       return new BadRequestException(`${entity} name must be unique`);
     }
     return error as Error;
   }
 
   private mapDeleteInUseError(error: unknown, whatBlocksIt: string): Error {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
-      return new BadRequestException(`Cannot delete — it still has linked ${whatBlocksIt}`);
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    ) {
+      return new BadRequestException(
+        `Cannot delete — it still has linked ${whatBlocksIt}`,
+      );
     }
     return error as Error;
   }
 
-  private toCategoryResponse(category: CategoryWithRelations): CategoryResponse {
+  private toCategoryResponse(
+    category: CategoryWithRelations,
+  ): CategoryResponse {
     return {
       id: category.id,
       name: category.name,
@@ -187,11 +210,15 @@ export class CategoriesService {
       colorHex: category.colorHex,
       productCount: category._count.products,
       imageUrl: category.imageUrl ?? '',
-      subcategories: category.subcategories.map((subcategory) => subcategory.name),
+      subcategories: category.subcategories.map(
+        (subcategory) => subcategory.name,
+      ),
     };
   }
 
-  private toSubcategoryResponse(subcategory: SubcategoryRecord): SubcategoryResponse {
+  private toSubcategoryResponse(
+    subcategory: SubcategoryRecord,
+  ): SubcategoryResponse {
     return {
       id: subcategory.id,
       name: subcategory.name,

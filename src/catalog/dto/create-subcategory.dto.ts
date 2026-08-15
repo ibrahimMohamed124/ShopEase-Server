@@ -1,4 +1,10 @@
-import { IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 // categoryId مش موجود هنا لأنه جاي من الـroute param (/categories/:categoryId/subcategories)
 // مش من الـbody — عشان الرابط بينهم يتفرض من الـURL نفسه مش من حاجة المستخدم بعتها

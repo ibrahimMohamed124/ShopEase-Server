@@ -5,5 +5,5 @@ import { CreateProductDto } from './create-product.dto';
 // لو مش عندك @nestjs/mapped-types متثبت: npm i @nestjs/mapped-types
 // eslint-disable-next-line @typescript-eslint/no-unsafe-call
 export class UpdateProductDto extends PartialType(CreateProductDto) {
-    originalPrice: number | undefined;
+  originalPrice: number | undefined;
 }
