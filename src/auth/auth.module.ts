@@ -7,9 +7,10 @@ import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { UsersModule } from '../users/users.module';
+import { MailModule } from 'src/mail/mail.module';
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), UsersModule],
+  imports: [PassportModule, JwtModule.register({}), UsersModule, MailModule],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy, JwtRefreshStrategy],
   exports: [AuthService],

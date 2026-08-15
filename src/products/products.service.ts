@@ -174,7 +174,7 @@ export class ProductsService {
     return error as Error;
   }
 
-  private toResponse(product: ProductWithCategory): ProductResponse {
+  toResponse(product: ProductWithCategory): ProductResponse {
     return {
       id: product.id,
       name: product.name,

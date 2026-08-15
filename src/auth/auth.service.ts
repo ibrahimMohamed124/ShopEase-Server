@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 // (typed as `string`) need an explicit cast to satisfy the compiler.
 import type { StringValue } from 'ms';
 import { UsersService } from '../users/users.service';
+import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 
 const RESET_TOKEN_BYTES = 32;
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   async validateUser(
@@ -115,7 +117,17 @@ export class AuthService {
 
     // TODO: wire up a real mail provider and email `resetToken` to the
     // user instead of logging it. Never log this in production.
-    console.log(`[auth] password reset token for ${email}: ${resetToken}`);
+    const appUrl = this.configService.getOrThrow<string>('APP_URL');
+    const resetUrl = `${appUrl}/reset-password.html?token=${resetToken}`;
+    const expiresInMinutes = RESET_TOKEN_TTL_MS / 60000;
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    await this.mailService.sendPasswordResetEmail(
+      user.email,
+      user.name,
+      resetUrl,
+      expiresInMinutes,
+    );
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {

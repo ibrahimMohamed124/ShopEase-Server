@@ -59,6 +59,18 @@ export class ProductsRepository {
     });
   }
 
+  updateRatingSummary(
+    id: string,
+    rating: number,
+    reviewCount: number,
+  ): Promise<ProductWithCategory> {
+    return this.prisma.product.update({
+      where: { id },
+      data: { rating, reviewCount },
+      include: PRODUCT_INCLUDE,
+    });
+  }
+
   create(data: Prisma.ProductCreateInput): Promise<ProductWithCategory> {
     return this.prisma.product.create({ data, include: PRODUCT_INCLUDE });
   }
