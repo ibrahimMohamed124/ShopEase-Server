@@ -1,17 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 import type { User } from '../../generated/prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { UsersRepository } from './users.repository';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly usersRepository: UsersRepository) {}
 
+  // الميثودز دي مستخدمة من AuthService و JwtStrategy، واجهتها فضلت زي ما
+  // هي بالظبط عشان محدش يتكسر — بس دلوقتي بتنادي على UsersRepository
+  // بدل ما تكلم Prisma مباشرة
   findByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { email } });
+    return this.usersRepository.findByEmail(email);
   }
 
   findById(id: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { id } });
+    return this.usersRepository.findById(id);
   }
 
   create(data: {
@@ -19,52 +26,109 @@ export class UsersService {
     email: string;
     passwordHash: string;
   }): Promise<User> {
-    return this.prisma.user.create({ data });
+    return this.usersRepository.create(data);
   }
 
-  async updateRefreshTokenHash(
+  updateRefreshTokenHash(
     userId: string,
     refreshTokenHash: string | null,
   ): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshTokenHash },
-    });
+    return this.usersRepository.updateRefreshTokenHash(
+      userId,
+      refreshTokenHash,
+    );
   }
 
   findUsersWithActiveResetToken(): Promise<User[]> {
-    return this.prisma.user.findMany({
-      where: {
-        resetTokenHash: { not: null },
-        resetTokenExpiresAt: { gt: new Date() },
-      },
-    });
+    return this.usersRepository.findUsersWithActiveResetToken();
   }
 
-  async setResetToken(
+  setResetToken(
     userId: string,
     resetTokenHash: string | null,
     resetTokenExpiresAt: Date | null,
   ): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { resetTokenHash, resetTokenExpiresAt },
-    });
+    return this.usersRepository.setResetToken(
+      userId,
+      resetTokenHash,
+      resetTokenExpiresAt,
+    );
   }
 
-  async updatePasswordHash(
+  updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+    return this.usersRepository.updatePasswordHash(userId, passwordHash);
+  }
+
+  // [جديد] — PATCH /users/me
+  async updateProfile(
     userId: string,
-    passwordHash: string,
-  ): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        passwordHash,
-        // Invalidate any pending reset token and force re-login everywhere.
-        resetTokenHash: null,
-        resetTokenExpiresAt: null,
-        refreshTokenHash: null,
-      },
+    dto: UpdateProfileDto,
+  ): Promise<UserResponseDto> {
+    const current = await this.usersRepository.findById(userId);
+    if (!current) {
+      throw new NotFoundException('User not found');
+    }
+
+    // لو غيّر الإيميل، لازم نتأكد إن مفيش يوزر تاني واخده قبل كده —
+    // نفس الفحص اللي في AuthService.register()، هنا بس بنستثني اليوزر نفسه
+    if (dto.email && dto.email !== current.email) {
+      const existing = await this.usersRepository.findByEmail(dto.email);
+      if (existing && existing.id !== userId) {
+        throw new ConflictException(
+          'An account with this email already exists',
+        );
+      }
+    }
+
+    const updated = await this.usersRepository.updateProfile(userId, {
+      name: dto.name,
+      email: dto.email,
     });
+    return this.toResponse(updated);
+  }
+
+  // [جديد] — POST /users/me/avatar، بيتنادى من الكنترولر بعد ما multer يخزن
+  // الملف على الديسك فعلاً ويديله اسم فريد
+  async updateAvatar(
+    userId: string,
+    avatarPath: string,
+  ): Promise<UserResponseDto> {
+    const current = await this.usersRepository.findById(userId);
+    if (!current) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updated = await this.usersRepository.updateAvatarUrl(
+      userId,
+      avatarPath,
+    );
+
+    // بنمسح الصورة القديمة من الديسك بعد نجاح التحديث في الداتابيز —
+    // ده تنظيف مش أكتر، فمينفعش يفشّل الـrequest لو حصل فيه أي مشكلة
+    if (current.avatarUrl && current.avatarUrl !== avatarPath) {
+      await this.deleteAvatarFile(current.avatarUrl);
+    }
+
+    return this.toResponse(updated);
+  }
+
+  private async deleteAvatarFile(avatarUrl: string): Promise<void> {
+    try {
+      // avatarUrl مخزّن كمسار نسبي زي '/uploads/avatars/xxx.jpg'، وده
+      // بالظبط نفس المجلد اللي main.ts بيعمله useStaticAssets عليه (public/)
+      const filePath = join(process.cwd(), 'public', avatarUrl);
+      await fs.unlink(filePath);
+    } catch {
+      // الملف ممكن يكون اتمسح قبل كده أو مش موجود أصلاً — تجاهل متعمد
+    }
+  }
+
+  private toResponse(user: User): UserResponseDto {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    };
   }
 }

@@ -18,9 +18,12 @@ model User {
   id                  String    @id @default(uuid())
   name                String
   email               String    @unique
+  avatarUrl           String?
   reviews Review[]
   wishlistItems WishlistItem[]
   cartItems CartItem[]
+  orders              Order[]
+  address             Address?
   passwordHash        String
   refreshTokenHash    String?
   resetTokenHash      String?
@@ -107,6 +110,25 @@ model WishlistItem {
   @@unique([userId, productId])
 }
 
+// عنوان الشحن الوحيد بتاع كل يوزر — بيقابل ShippingAddress في الفلاتر.
+// userId هنا @unique عشان النسخة الحالية من التطبيق بتتعامل مع عنوان واحد
+// بس لكل مستخدم (GET/PUT على /users/me/shipping-address)، مش قايمة عناوين.
+model Address {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  street    String
+  city      String
+  state     String
+  zip       String
+  country   String   @default("United States")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("addresses")
+}
+
 model CartItem {
   id        String   @id @default(cuid())
   userId    String
@@ -118,4 +140,63 @@ model CartItem {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, productId])
+}
+
+// حالة الأوردر — Order.fromJson في الفلاتر بتعمل toLowerCase() على القيمة
+// قبل ما تقارنها بـ 'shipped'/'delivered'/'cancelled' (default: processing)،
+// فمهم إن الـenum values هنا تفضل نفس الكلمات دي حروف كابيتال بس
+enum OrderStatus {
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// أوردر مكتمل — CheckoutService.placeOrder() في الفلاتر بيبعت POST /orders
+// وOrdersService.fetchOrders() بتعمل GET /orders. الأوردر بياخد snapshot كامل
+// من عنوان الشحن (مش relation لـAddress) عشان لو اليوزر غيّر عنوانه المحفوظ
+// بعد كده، الأوردرات القديمة تفضل عارضة العنوان اللي اتشحن عليه فعلاً.
+model Order {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items         OrderItem[]
+  subtotal      Decimal     @db.Decimal(10, 2)
+  shippingCost  Decimal     @db.Decimal(10, 2)
+  tax           Decimal     @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  status        OrderStatus @default(PROCESSING)
+  paymentMethod String
+
+  // Shipping address snapshot (مش FK لـAddress — العنوان بتاع وقت الطلب
+  // نفسه، مش بيتغيّر لو اليوزر عدّل عنوانه المحفوظ بعد كده)
+  shippingName    String
+  shippingEmail   String
+  shippingPhone   String
+  shippingStreet  String
+  shippingCity    String
+  shippingState   String
+  shippingZip     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("orders")
+}
+
+// سطر أوردر — snapshot من المنتج وقت الشراء (name/imageUrl/price) عشان لو
+// المنتج الأصلي اتعدل أو اتحذف بعد كده، الأوردر القديم يفضل زي ما اتشترى
+// بالظبط. من عمد من غير علاقة Prisma لـProduct (productId عمود عادي بس)
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  name      String
+  imageUrl  String
+  price     Decimal  @db.Decimal(10, 2)
+  quantity  Int
+  createdAt DateTime @default(now())
+
+  @@map("order_items")
 }

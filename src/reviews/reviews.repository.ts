@@ -30,6 +30,21 @@ export class ReviewsRepository {
     return this.prisma.review.create({ data });
   }
 
+  findById(id: string): Promise<ReviewRecord | null> {
+    return this.prisma.review.findUnique({ where: { id } });
+  }
+
+  update(
+    id: string,
+    data: Prisma.ReviewUncheckedUpdateInput,
+  ): Promise<ReviewRecord> {
+    return this.prisma.review.update({ where: { id }, data });
+  }
+
+  delete(id: string): Promise<ReviewRecord> {
+    return this.prisma.review.delete({ where: { id } });
+  }
+
   async aggregateForProduct(
     productId: string,
   ): Promise<{ average: number; count: number }> {

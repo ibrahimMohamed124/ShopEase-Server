@@ -1,16 +1,19 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ReviewsRepository, ReviewRecord } from './reviews.repository';
 import { ProductsRepository } from '../products/products.repository';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
 import { SafeUser } from '../auth/auth.service';
 
 export interface ReviewResponse {
   id: string;
   productId: string;
+  userId: string;
   name: string;
   rating: number;
   date: string;
@@ -66,6 +69,54 @@ export class ReviewsService {
     return this.toResponse(review);
   }
 
+  // بيتأكد إن الـreview موجودة وإن اليوزر الحالي هو صاحبها قبل أي تعديل
+  // أو حذف — لو مش هو، بيرمي ForbiddenException بدل ما يسيبه يعدّل/يمسح
+  // تعليق حد تاني
+  private async ensureOwnedReview(
+    reviewId: string,
+    productId: string,
+    userId: string,
+  ): Promise<ReviewRecord> {
+    const review = await this.reviewsRepository.findById(reviewId);
+    if (!review || review.productId !== productId) {
+      throw new NotFoundException('Review not found');
+    }
+    if (review.userId !== userId) {
+      throw new ForbiddenException('You can only manage your own review');
+    }
+    return review;
+  }
+
+  async update(
+    productId: string,
+    reviewId: string,
+    user: SafeUser,
+    dto: UpdateReviewDto,
+  ): Promise<ReviewResponse> {
+    await this.ensureOwnedReview(reviewId, productId, user.id);
+
+    const updated = await this.reviewsRepository.update(reviewId, {
+      ...(dto.rating !== undefined ? { rating: dto.rating } : {}),
+      ...(dto.text !== undefined ? { text: dto.text } : {}),
+    });
+
+    if (dto.rating !== undefined) {
+      await this.refreshProductRatingSummary(productId);
+    }
+
+    return this.toResponse(updated);
+  }
+
+  async remove(
+    productId: string,
+    reviewId: string,
+    user: SafeUser,
+  ): Promise<void> {
+    await this.ensureOwnedReview(reviewId, productId, user.id);
+    await this.reviewsRepository.delete(reviewId);
+    await this.refreshProductRatingSummary(productId);
+  }
+
   private async ensureProductExists(productId: string): Promise<void> {
     const product = await this.productsRepository.findById(productId);
     if (!product) {
@@ -87,6 +138,7 @@ export class ReviewsService {
     return {
       id: review.id,
       productId: review.productId,
+      userId: review.userId,
       name: review.name,
       rating: review.rating,
       date: review.createdAt.toISOString(),

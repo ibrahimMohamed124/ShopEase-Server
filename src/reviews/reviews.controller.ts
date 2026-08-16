@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -12,6 +14,7 @@ import {
 import { Request } from 'express';
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SafeUser } from '../auth/auth.service';
 
@@ -39,5 +42,27 @@ export class ReviewsController {
     @Req() req: RequestWithUser,
   ) {
     return this.reviewsService.create(productId, req.user, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':reviewId')
+  update(
+    @Param('productId') productId: string,
+    @Param('reviewId') reviewId: string,
+    @Body() dto: UpdateReviewDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.reviewsService.update(productId, reviewId, req.user, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':reviewId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(
+    @Param('productId') productId: string,
+    @Param('reviewId') reviewId: string,
+    @Req() req: RequestWithUser,
+  ) {
+    await this.reviewsService.remove(productId, reviewId, req.user);
   }
 }
