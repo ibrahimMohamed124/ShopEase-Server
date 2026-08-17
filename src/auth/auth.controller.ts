@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService, SafeUser } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -28,12 +29,17 @@ interface RequestWithRefreshUser extends Request {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // 5 محاولات تسجيل حساب لكل IP كل دقيقة — يمنع bots من عمل حسابات بالجملة
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
+  // 5 محاولات لوجن لكل IP كل دقيقة — أهم ليمِت في الملف ده، ده اللي بيمنع
+  // brute-force على الباسوردات
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -52,6 +58,9 @@ export class AuthController {
     return this.authService.refreshTokens(req.user.id, req.user.email);
   }
 
+  // 3 طلبات لكل IP كل 15 دقيقة — بيمنع حد يستخدم الـendpoint ده كـ
+  // "email bomb" على إيميل حد تاني، وبيبطّئ أي محاولة enumeration
+  @Throttle({ default: { limit: 3, ttl: 15 * 60_000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -62,6 +71,9 @@ export class AuthController {
     };
   }
 
+  // 10 محاولات لكل IP كل 15 دقيقة — الـtoken نفسه عشوائي وطويل، بس الليمِت
+  // ده بيقلل مساحة أي محاولة brute-force على أي حساب مفتوح له reset token
+  @Throttle({ default: { limit: 10, ttl: 15 * 60_000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() dto: ResetPasswordDto) {

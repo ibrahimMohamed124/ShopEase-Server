@@ -16,6 +16,9 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { FindProductsQueryDto } from './dto/query-product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../../generated/prisma/client';
 
 @Controller('products')
 export class ProductsController {
@@ -39,23 +42,25 @@ export class ProductsController {
     return this.productsService.findOne(id);
   }
 
-  // TODO: JwtAuthGuard هنا بيتأكد بس إن اليوزر عامل login — أي حد عنده حساب
-  // يقدر يضيف/يعدل/يحذف منتجات دلوقتي. لما تضيف الأدوار (admin/customer)
-  // بدّلها بـ RolesGuard مع @Roles('admin').
-  @UseGuards(JwtAuthGuard)
+  // أدمن بس يقدر يضيف/يعدل/يحذف منتجات — JwtAuthGuard بيتأكد إن فيه توكن
+  // صالح، RolesGuard بيتأكد بعد كده إن req.user.role === ADMIN
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(id, dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {

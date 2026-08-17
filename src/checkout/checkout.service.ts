@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { CheckoutDto } from './dto/checkout.dto';
 import { CheckoutResponseDto } from './dto/checkout-response.dto';
 import { CheckoutRepository } from './checkout.repository';
 import { OrdersService } from '../orders/orders.service';
+
+// ثابت بيتاخد كـendpoint identifier جوه idempotency_keys — لو حبينا نضيف
+// idempotency على mutation تانية بعدين، كل واحدة هتاخد ثابت زي ده مختلف
+const CHECKOUT_ENDPOINT = 'POST /orders';
 
 // نفس القيم بالظبط اللي checkout_cubit.dart بيستخدمها
 // (shippingFor/taxFor/grandTotalFor) — لازم تفضل متطابقة عشان الرقم اللي
@@ -26,7 +31,15 @@ export class CheckoutService {
   async placeOrder(
     userId: string,
     dto: CheckoutDto,
+    idempotencyKey?: string,
   ): Promise<CheckoutResponseDto> {
+    // بنهاش الـbody كله (items/total/paymentMethod/shippingAddress) عشان
+    // لو نفس الـkey اتبعت تاني بـbody مختلف (باگ في الفلاتر، أو حد بيحاول
+    // يلعب بالـkey يدويًا)، نرفض بدل ما نرجّع أوردر مالوش علاقة بالطلب الحالي
+    const requestHash = idempotencyKey
+      ? createHash('sha256').update(JSON.stringify(dto)).digest('hex')
+      : undefined;
+
     const order = await this.checkoutRepository.placeOrder(
       userId,
       dto.items.map((item) => ({
@@ -36,6 +49,13 @@ export class CheckoutService {
       dto.paymentMethod,
       dto.shippingAddress,
       (subtotal) => this.computeTotals(subtotal),
+      idempotencyKey
+        ? {
+            key: idempotencyKey,
+            endpoint: CHECKOUT_ENDPOINT,
+            requestHash: requestHash!,
+          }
+        : undefined,
     );
 
     // نفس OrdersService.toResponse المستخدمة في GET /orders — عشان شكل
@@ -44,8 +64,7 @@ export class CheckoutService {
   }
 
   private computeTotals(subtotal: number) {
-    const shippingCost =
-      subtotal > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
+    const shippingCost = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
     const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
     const total = Math.round((subtotal + shippingCost + tax) * 100) / 100;
     return { shippingCost, tax, total };

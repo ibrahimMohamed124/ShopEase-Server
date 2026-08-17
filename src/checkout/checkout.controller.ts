@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Headers,
   HttpCode,
   HttpStatus,
   Post,
@@ -26,9 +27,21 @@ interface RequestWithUser extends Request {
 export class CheckoutController {
   constructor(private readonly checkoutService: CheckoutService) {}
 
+  // الـIdempotency-Key اختياري بالكامل — لو الفلاتر مابعتوش، السلوك زي
+  // ما هو بالظبط من غير أي تغيير. لو بعتوه، بيتستخدم لمنع إنشاء أوردر
+  // مكرر (وخصم ستوك مرتين) لو نفس الطلب اتبعت أكتر من مرة — دبل-كليك على
+  // "Place Order"، أو retry تلقائي بعد timeout في الشبكة
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  placeOrder(@Req() req: RequestWithUser, @Body() dto: CheckoutDto) {
-    return this.checkoutService.placeOrder(req.user.id, dto);
+  placeOrder(
+    @Req() req: RequestWithUser,
+    @Body() dto: CheckoutDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.checkoutService.placeOrder(
+      req.user.id,
+      dto,
+      idempotencyKey?.trim() || undefined,
+    );
   }
 }

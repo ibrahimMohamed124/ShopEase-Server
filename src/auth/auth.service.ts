@@ -14,6 +14,7 @@ import type { StringValue } from 'ms';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
+import { Role } from '../../generated/prisma/client';
 
 const RESET_TOKEN_BYTES = 32;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -27,6 +28,7 @@ export interface SafeUser {
   id: string;
   name: string;
   email: string;
+  role: Role;
 }
 
 const BCRYPT_ROUNDS = 12;
@@ -50,7 +52,7 @@ export class AuthService {
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) return null;
 
-    return { id: user.id, name: user.name, email: user.email };
+    return { id: user.id, name: user.name, email: user.email, role: user.role };
   }
 
   async register(dto: RegisterDto): Promise<{ user: SafeUser } & AuthTokens> {
@@ -70,7 +72,7 @@ export class AuthService {
     await this.persistRefreshToken(user.id, tokens.refreshToken);
 
     return {
-      user: { id: user.id, name: user.name, email: user.email },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
       ...tokens,
     };
   }

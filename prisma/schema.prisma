@@ -14,11 +14,17 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id                  String    @id @default(uuid())
   name                String
   email               String    @unique
   avatarUrl           String?
+  role                Role      @default(USER)
   reviews Review[]
   wishlistItems WishlistItem[]
   cartItems CartItem[]
@@ -181,7 +187,35 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  idempotencyKey IdempotencyKey?
+
   @@map("orders")
+}
+
+// بيخزن نتيجة أي POST حساس (زي checkout) اتعمل بـIdempotency-Key header،
+// عشان لو نفس الـkey اتبعت تاني (retry من الفلاتر بعد timeout، دبل-كليك
+// على "Place Order"، إلخ) السيرفر يرجّع نفس الأوردر اللي اتعمل قبل كده
+// بدل ما يعمل أوردر جديد ويخصم الستوك تاني. orderId بيتحط جوه نفس
+// الـtransaction اللي بتنشئ الأوردر (شوف CheckoutRepository)، فمفيش صف
+// من الجدول ده بيتخزن من غير أوردر مرتبط بيه فعلاً — لو الـtransaction
+// فشلت لأي سبب (ستوك مش كفاية مثلاً)، الصف ده بيترجع لورا زي أي حاجة
+// تانية جوه الـtransaction، فمفيش reservation عالقة تمنع المستخدم يعيد
+// المحاولة بنفس الـkey بعد ما يصلح المشكلة
+model IdempotencyKey {
+  id          String   @id @default(cuid())
+  userId      String
+  key         String
+  endpoint    String
+  requestHash String
+  orderId     String   @unique
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  // نفس اليوزر+نفس الـkey+نفس الـendpoint = نفس العملية بالظبط. الـendpoint
+  // موجود عشان لو حبينا نستخدم نفس الآلية على mutation تانية بعدين، مفيش
+  // تصادم بين key اتبعت لـ/orders وkey باسم زيه اتبعت لـendpoint تاني
+  @@unique([userId, key, endpoint])
+  @@map("idempotency_keys")
 }
 
 // سطر أوردر — snapshot من المنتج وقت الشراء (name/imageUrl/price) عشان لو

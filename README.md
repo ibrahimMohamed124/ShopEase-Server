@@ -57,6 +57,49 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in real values:
+
+```bash
+cp .env.example .env
+```
+
+All required variables are validated with Joi at startup (`src/config/env.validation.ts`) —
+if anything is missing or malformed, the app refuses to boot with a clear
+error instead of failing later mid-request.
+
+> **Security note:** if a `.env` file for this project was ever shared,
+> pasted, or committed anywhere (chat, a repo, a support ticket), treat every
+> secret in it as compromised: rotate the `JWT_ACCESS_SECRET` /
+> `JWT_REFRESH_SECRET` (this invalidates all existing sessions) and rotate
+> the `SMTP_PASS` / Gmail App Password from
+> [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+> Never commit `.env` — only `.env.example` (which holds placeholders, no
+> real values) belongs in version control.
+
+## Roles (Admin / User)
+
+Every user is created with `role = USER` by default (registration never lets
+a client set their own role — that would be a privilege-escalation bug).
+Admin-only endpoints (product/category writes, order status updates) are
+protected with `JwtAuthGuard` + `RolesGuard` + `@Roles(Role.ADMIN)`.
+
+To promote the first admin, register normally through `/auth/register` and
+then flip the role directly in the database:
+
+```sql
+UPDATE users SET role = 'ADMIN' WHERE email = 'you@example.com';
+```
+
+or with Prisma:
+
+```bash
+npx prisma studio
+```
+
+and edit the `role` column for that user from the UI.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

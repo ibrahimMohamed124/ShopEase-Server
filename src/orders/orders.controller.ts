@@ -11,6 +11,9 @@ import { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../../generated/prisma/client';
 import { SafeUser } from '../auth/auth.service';
 
 interface RequestWithUser extends Request {
@@ -41,9 +44,9 @@ export class OrdersController {
     return { order };
   }
 
-  // TODO: زي الـproducts، JwtAuthGuard هنا بيتأكد بس إن اليوزر عامل login —
-  // أي حد عنده حساب يقدر يغيّر حالة أي أوردر حاليًا (مش بس بتاعه). لما
-  // تضيف الأدوار (admin/customer) بدّلها بـRolesGuard مع @Roles('admin')
+  // أدمن بس يقدر يغيّر حالة أي أوردر — العميل العادي عنده GET بس فوق
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: string,
