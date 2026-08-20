@@ -48,6 +48,26 @@ export class OrdersRepository {
     });
   }
 
+  // [جديد] — بيتنادى من ReviewsService.create() عشان يحدد قيمة verified:
+  // بندوّر على OrderItem بنفس الـproductId جوه أوردر (a) بتاع نفس اليوزر
+  // و(b) وصله فعلًا لحالة DELIVERED. مش بس "طلبه" — لازم يكون استلمه
+  // فعليًا، وإلا كان أي حد يقدر يعمل review "verified" بمجرد إنه يحط
+  // المنتج في أوردر ويلغيه فورًا. findFirst كافية هنا (بنسأل سؤال
+  // boolean، مش محتاجين كل الصفوف المطابقة).
+  async hasDeliveredOrderForProduct(
+    userId: string,
+    productId: string,
+  ): Promise<boolean> {
+    const match = await this.prisma.orderItem.findFirst({
+      where: {
+        productId,
+        order: { userId, status: OrderStatus.DELIVERED },
+      },
+      select: { id: true },
+    });
+    return match !== null;
+  }
+
   // [تعديل] — بقت بتاخد extraData اختياري عشان تسجل shippedAt/deliveredAt
   // في نفس لحظة تغيير الحالة (بدل ما نحتاج update تاني منفصل). القيمة
   // الافتراضية {} عشان أي نداء قديم لسه شغال زي ما هو من غير أي تعديل.

@@ -3,9 +3,10 @@ import { ReviewsController } from './reviews.controller';
 import { ReviewsService } from './reviews.service';
 import { ReviewsRepository } from './reviews.repository';
 import { ProductsModule } from '../products/products.module';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-  imports: [ProductsModule],
+  imports: [ProductsModule, OrdersModule],
   controllers: [ReviewsController],
   providers: [ReviewsService, ReviewsRepository],
 })

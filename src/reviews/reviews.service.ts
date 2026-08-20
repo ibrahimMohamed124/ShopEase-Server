@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ReviewsRepository, ReviewRecord } from './reviews.repository';
 import { ProductsRepository } from '../products/products.repository';
+import { OrdersRepository } from '../orders/orders.repository';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { SafeUser } from '../auth/auth.service';
@@ -27,6 +28,7 @@ export class ReviewsService {
   constructor(
     private readonly reviewsRepository: ReviewsRepository,
     private readonly productsRepository: ProductsRepository,
+    private readonly ordersRepository: OrdersRepository,
   ) {}
 
   async findAllForProduct(productId: string): Promise<ReviewResponse[]> {
@@ -50,15 +52,23 @@ export class ReviewsService {
       throw new BadRequestException('You have already reviewed this product');
     }
 
-    // TODO: مفيش Orders module لسه نتحقق بيه إن اليوزر فعلًا اشترى المنتج،
-    // فـverified بتفضل false لحد ما نضيف ربط حقيقي بسجل الطلبات
+    // [تعديل] — Orders module موجود دلوقتي، فـverified بقت بتتحسب فعليًا:
+    // بندوّر إن كان عند نفس اليوزر أوردر وصل لحالة DELIVERED فيه المنتج ده.
+    // "طلبه" مش كفاية عمدًا (أوردر لسه PROCESSING أو اتلغى مايأهلش) — لازم
+    // يكون استلمه فعليًا، وإلا كان أي حد يقدر يعمل review "verified" بمجرد
+    // إنه يحط المنتج في أوردر من غير ما يشتريه فعلاً لحد النهاية.
+    const verified = await this.ordersRepository.hasDeliveredOrderForProduct(
+      user.id,
+      productId,
+    );
+
     const review = await this.reviewsRepository.create({
       productId,
       userId: user.id,
       name: user.name,
       rating: dto.rating,
       text: dto.text,
-      verified: false,
+      verified,
     });
 
     // بنحدّث rating/reviewCount المخزّنة على المنتج نفسه — ده اللي بيخلي
