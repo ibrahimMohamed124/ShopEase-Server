@@ -83,10 +83,21 @@ export class OrdersService {
       extraData.deliveredAt = new Date();
     }
 
+    // [تعديل] — لازم نتأكد إن ده انتقال حقيقي لـCANCELLED (current.status
+    // كان حاجة تانية قبل كده)، مش نداء idempotent بنفس CANCELLED — وإلا
+    // كنا هنرجّع نفس الستوك مرتين لو الأدمن ضغط "إلغاء" على أوردر ملغي
+    // بالفعل. current.status !== status هنا يضمن إننا فعلاً بندخل فرع
+    // "انتقال حقيقي" مش no-op (شوف التحقق فوق).
+    const restockItems =
+      status === OrderStatus.CANCELLED && current.status !== status
+        ? this.toRestockItems(current)
+        : undefined;
+
     const order = await this.ordersRepository.updateStatus(
       id,
       status,
       extraData,
+      restockItems,
     );
     return this.toResponse(order);
   }
@@ -114,11 +125,29 @@ export class OrdersService {
       );
     }
 
+    // [تعديل] — نفس منطق الاستعادة اللي في updateStatus فوق (المسار
+    // الإداري)، هنا للـself-service cancel. order.status === PROCESSING
+    // مضمون فوق، يعني ده أول انتقال حقيقي لـCANCELLED مش no-op، فالاستعادة
+    // مأمونة (مش هترجع الستوك مرتين لنفس الأوردر).
     const updated = await this.ordersRepository.updateStatus(
       id,
       OrderStatus.CANCELLED,
+      {},
+      this.toRestockItems(order),
     );
     return this.toResponse(updated);
+  }
+
+  // Order.items بيحتوي على snapshot كل عنصر (productId + quantity) وقت
+  // الطلب — نفس الكميات اللي CheckoutRepository.createOrder() خصمها من
+  // stockQuantity وقت إنشاء الأوردر، فترجيعها هنا بالظبط عكس العملية دي.
+  private toRestockItems(
+    order: OrderWithItems,
+  ): { productId: string; quantity: number }[] {
+    return order.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    }));
   }
 
   // [جديد] — GET /orders/:id/tracking. نفس ownership check بتاع findOneForUser
