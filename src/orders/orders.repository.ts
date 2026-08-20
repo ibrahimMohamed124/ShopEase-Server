@@ -37,10 +37,28 @@ export class OrdersRepository {
     });
   }
 
-  updateStatus(id: string, status: OrderStatus): Promise<OrderWithItems> {
+  // بيتنادى بس من OrdersService.updateStatus() (admin-only route، شوف
+  // RolesGuard في OrdersController) عشان نجيب الحالة الحالية للأوردر
+  // ونتحقق من صحة الانتقال قبل ما نكتب. من غير userId scoping عمدًا —
+  // الأدمن لازم يقدر يدير أي أوردر، على عكس findOneForUser فوق.
+  findById(id: string): Promise<OrderWithItems | null> {
+    return this.prisma.order.findUnique({
+      where: { id },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  // [تعديل] — بقت بتاخد extraData اختياري عشان تسجل shippedAt/deliveredAt
+  // في نفس لحظة تغيير الحالة (بدل ما نحتاج update تاني منفصل). القيمة
+  // الافتراضية {} عشان أي نداء قديم لسه شغال زي ما هو من غير أي تعديل.
+  updateStatus(
+    id: string,
+    status: OrderStatus,
+    extraData: Prisma.OrderUpdateInput = {},
+  ): Promise<OrderWithItems> {
     return this.prisma.order.update({
       where: { id },
-      data: { status },
+      data: { status, ...extraData },
       include: ORDER_INCLUDE,
     });
   }

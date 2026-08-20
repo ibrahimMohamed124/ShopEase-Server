@@ -11,23 +11,13 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
-  // لو السيرفر شغال ورا load balancer/reverse proxy (Render, Railway,
-  // nginx, إلخ) — بدون ده، Express هيفتكر إن كل الطلبات جاية من IP
-  // الـproxy نفسه، وده بيكسر rate limiting والـlogging المبني على IP
-  // العميل الحقيقي (X-Forwarded-For)
   app.set('trust proxy', 1);
 
   app.useStaticAssets(join(__dirname, '..', '..', 'public'));
 
-  // Security headers (CSP, X-Frame-Options, X-Content-Type-Options, إلخ).
-  // بنعطّل contentSecurityPolicy الافتراضية بتاعة helmet لأنها متصممة
-  // لسيرفرات بترندر HTML؛ الـAPI ده JSON بس، والـfrontend (تطبيق منفصل)
-  // هو اللي يحدد CSP بتاعته لوحده.
   app.use(
     helmet({
       contentSecurityPolicy: false,
-      // بدون ده، helmet بيمنع الـfrontend (origin مختلف) من إنه يعرض
-      // صور الـavatars اللي بنسيرفها من public/uploads كـstatic files
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
@@ -40,8 +30,6 @@ async function bootstrap() {
     }),
   );
 
-  // فلتر واحد بيلف كل الـexceptions ويرجّعهم بشكل موحّد، وبيمنع أي
-  // stack trace أو تفاصيل داخلية إنها تسرّب في الـresponse
   app.useGlobalFilters(new AllExceptionsFilter());
 
   const corsOrigin = configService.get<string>('CORS_ORIGIN');

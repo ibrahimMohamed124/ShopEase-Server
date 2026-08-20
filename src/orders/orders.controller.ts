@@ -44,6 +44,27 @@ export class OrdersController {
     return { order };
   }
 
+  // [جديد] — GET /orders/:id/tracking، مغلفة تحت 'tracking' عشان
+  // TrackOrderService.fetchTracking() في الفلاتر بتدور على
+  // data['tracking'] ?? data['data'] ?? raw. مفيش RolesGuard هنا عمدًا —
+  // نفس فكرة /:id/cancel، أي عميل عادي يقدر يتتبع أوردره هو بس (findOneForUser
+  // جوه getTracking بيتأكد من الملكية).
+  @Get(':id/tracking')
+  async getTracking(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const tracking = await this.ordersService.getTracking(req.user.id, id);
+    return { tracking };
+  }
+
+  // [جديد] — العميل بيلغي أوردره هو، مفيش RolesGuard هنا عمدًا (بعكس
+  // /:id/status تحت) لأن أي عميل عادي لازم يقدر يلغي أوردر لسه بيتحضّر.
+  // orders_service.dart (الفلاتر) بينادي PATCH /orders/:id/cancel بالظبط —
+  // كان الـroute ده مش موجود خالص قبل كده (Cannot PATCH .../cancel).
+  @Patch(':id/cancel')
+  async cancel(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const order = await this.ordersService.cancelForUser(req.user.id, id);
+    return { order };
+  }
+
   // أدمن بس يقدر يغيّر حالة أي أوردر — العميل العادي عنده GET بس فوق
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)

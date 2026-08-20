@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import type { User } from '../../generated/prisma/client';
@@ -39,8 +43,8 @@ export class UsersService {
     );
   }
 
-  findUsersWithActiveResetToken(): Promise<User[]> {
-    return this.usersRepository.findUsersWithActiveResetToken();
+  findByResetTokenHash(resetTokenHash: string): Promise<User | null> {
+    return this.usersRepository.findByResetTokenHash(resetTokenHash);
   }
 
   setResetToken(

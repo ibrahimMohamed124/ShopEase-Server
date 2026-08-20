@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-// نفس النمط اللي استخدمته في PrismaService بتاعك: Prisma 7 بيولّد الـclient
-// في مسار خارج node_modules حسب الـ output في schema.prisma.
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 

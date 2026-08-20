@@ -25,7 +25,6 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   // GET /products?category=&search=&page=&limit=
-  // ده اللي بينادَى من ProductService.fetchProducts() في الفلاتر
   @Get()
   findAll(@Query() query: FindProductsQueryDto) {
     return this.productsService.findAll(query);
