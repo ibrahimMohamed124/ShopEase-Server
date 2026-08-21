@@ -32,13 +32,13 @@ export class UsersRepository {
     });
   }
 
-  findUsersWithActiveResetToken(): Promise<User[]> {
-    return this.prisma.user.findMany({
-      where: {
-        resetTokenHash: { not: null },
-        resetTokenExpiresAt: { gt: new Date() },
-      },
-    });
+  // [أمان] lookup مباشر بالـhash بدل ما نجيب كل اليوزرز اللي عندهم token
+  // فعّال ونلف عليهم — شوف AuthService.resetPassword(). الفلترة على
+  // resetTokenExpiresAt بتتعمل في الـservice layer (مش هنا) عشان
+  // AuthService يقدر يميّز بين "مفيش token بالـhash ده" و"الـtoken منتهي"
+  // من غير query تاني.
+  findByResetTokenHash(resetTokenHash: string): Promise<User | null> {
+    return this.prisma.user.findFirst({ where: { resetTokenHash } });
   }
 
   async setResetToken(

@@ -14,8 +14,8 @@ import { Request } from 'express';
 import { AddressesService } from './addresses.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SafeUser } from '../auth/auth.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.ts';
 
 interface RequestWithUser extends Request {
   user: SafeUser;

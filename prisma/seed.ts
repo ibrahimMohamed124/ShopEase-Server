@@ -263,6 +263,176 @@ const products: ProductSeed[] = [
     badge: 'Sale',
     inStock: true,
   },
+  {
+    id: '13',
+    name: 'Samsung Galaxy S24 Ultra',
+    price: 1199.99,
+    originalPrice: 1299.99,
+    description:
+      'Flagship Android phone with a brilliant AMOLED display and pro-grade camera system.',
+    categoryId: 'electronics',
+    rating: 4.7,
+    reviewCount: 2984,
+    imageUrl:
+      'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=600&q=80',
+    badge: 'New',
+    inStock: true,
+  },
+  {
+    id: '14',
+    name: 'Canon EOS R50',
+    price: 679.99,
+    originalPrice: 799.99,
+    description:
+      'Compact mirrorless camera with fast autofocus, ideal for photos and vlogging.',
+    categoryId: 'electronics',
+    rating: 4.6,
+    reviewCount: 587,
+    imageUrl:
+      'https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=600&q=80',
+    badge: 'Sale',
+    inStock: true,
+  },
+  {
+    id: '15',
+    name: 'Oversized Cotton Hoodie',
+    price: 44.99,
+    description:
+      'Relaxed-fit hoodie in heavyweight cotton fleece with a brushed interior.',
+    categoryId: 'fashion',
+    rating: 4.4,
+    reviewCount: 1102,
+    imageUrl:
+      'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600&q=80',
+    inStock: true,
+  },
+  {
+    id: '16',
+    name: "Kids' Graphic Tee Set",
+    price: 24.99,
+    originalPrice: 32.99,
+    description:
+      'Pack of three soft cotton graphic tees for everyday play and comfort.',
+    categoryId: 'fashion',
+    rating: 4.5,
+    reviewCount: 645,
+    imageUrl:
+      'https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?w=600&q=80',
+    badge: 'Sale',
+    inStock: true,
+  },
+  {
+    id: '17',
+    name: 'Aviator Sunglasses',
+    price: 59.99,
+    description:
+      'Classic aviator frames with polarized lenses and UV400 protection.',
+    categoryId: 'accessories',
+    rating: 4.5,
+    reviewCount: 1893,
+    imageUrl:
+      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=600&q=80',
+    inStock: true,
+  },
+  {
+    id: '18',
+    name: 'Sterling Silver Necklace',
+    price: 39.99,
+    originalPrice: 54.99,
+    description:
+      'Delicate sterling silver pendant necklace, hypoallergenic and tarnish-resistant.',
+    categoryId: 'accessories',
+    rating: 4.6,
+    reviewCount: 401,
+    imageUrl:
+      'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&q=80',
+    badge: 'Sale',
+    inStock: true,
+  },
+  {
+    id: '19',
+    name: 'Adjustable Dumbbell Set',
+    price: 249.99,
+    description:
+      'Space-saving adjustable dumbbells from 5 to 52.5 lbs per hand, quick-select dial.',
+    categoryId: 'sports',
+    rating: 4.8,
+    reviewCount: 1567,
+    imageUrl:
+      'https://images.unsplash.com/photo-1638536532686-d610adfc8e5c?w=600&q=80',
+    badge: 'Hot',
+    inStock: true,
+  },
+  {
+    id: '20',
+    name: 'Trail Mountain Bike',
+    price: 899.99,
+    originalPrice: 1099.99,
+    description:
+      'Full-suspension mountain bike built for rugged trails and confident descents.',
+    categoryId: 'sports',
+    rating: 4.7,
+    reviewCount: 312,
+    imageUrl:
+      'https://images.unsplash.com/photo-1576435728678-68d0fbf94e91?w=600&q=80',
+    badge: 'Sale',
+    inStock: false,
+  },
+  {
+    id: '21',
+    name: 'Scandinavian Accent Chair',
+    price: 329.99,
+    description:
+      'Mid-century inspired accent chair with solid wood legs and premium upholstery.',
+    categoryId: 'home',
+    rating: 4.6,
+    reviewCount: 288,
+    imageUrl:
+      'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=600&q=80',
+    inStock: true,
+  },
+  {
+    id: '22',
+    name: '12-Piece Ceramic Cookware Set',
+    price: 189.99,
+    originalPrice: 229.99,
+    description:
+      'Non-stick ceramic cookware set with even heat distribution and easy cleanup.',
+    categoryId: 'home',
+    rating: 4.5,
+    reviewCount: 976,
+    imageUrl:
+      'https://images.unsplash.com/photo-1584990347449-a2d4c1b8b1c8?w=600&q=80',
+    badge: 'Sale',
+    inStock: true,
+  },
+  {
+    id: '23',
+    name: 'Linen Throw Pillow Set',
+    price: 34.99,
+    description:
+      'Set of two breathable linen throw pillow covers with hidden zipper closure.',
+    categoryId: 'home',
+    rating: 4.3,
+    reviewCount: 512,
+    imageUrl:
+      'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=600&q=80',
+    inStock: true,
+  },
+  {
+    id: '24',
+    name: 'Wireless Charging Stand',
+    price: 34.99,
+    originalPrice: 44.99,
+    description:
+      'Fast wireless charging stand compatible with phones, earbuds, and smartwatches.',
+    categoryId: 'electronics',
+    rating: 4.4,
+    reviewCount: 1749,
+    imageUrl:
+      'https://images.unsplash.com/photo-1591290619762-c4b7b6b78d7e?w=600&q=80',
+    inStock: true,
+  },
 ];
 
 async function main() {

@@ -8,7 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { Role } from '../../../generated/prisma/client';
-import { SafeUser } from '../auth.service';
+import { SafeUser } from '../../auth/auth.service';
 
 interface RequestWithUser extends Request {
   user: SafeUser;
@@ -34,7 +34,7 @@ export class RolesGuard implements CanActivate {
 
     const { user } = context.switchToHttp().getRequest<RequestWithUser>();
 
-    if (!user || !user.role || !requiredRoles.includes(user.role)) {
+    if (!user || !requiredRoles.includes(user.role)) {
       throw new ForbiddenException(
         'You do not have permission to perform this action',
       );

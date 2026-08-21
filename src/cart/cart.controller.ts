@@ -15,8 +15,8 @@ import { Request } from 'express';
 import { CartService } from './cart.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SafeUser } from '../auth/auth.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.ts';
 
 interface RequestWithUser extends Request {
   user: SafeUser;

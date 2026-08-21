@@ -15,10 +15,11 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateSubcategoryDto } from './dto/create-subcategory.dto';
 import { UpdateSubcategoryDto } from './dto/update-subcategory.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+
 import { Role } from '../../generated/prisma/client';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.ts';
+import { RolesGuard } from '../common/guards/roles.guard.ts';
+import { Roles } from '../common/decorators/roles.decorator.ts';
 
 @Controller('categories')
 export class CategoriesController {

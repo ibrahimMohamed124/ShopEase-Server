@@ -1,0 +1,40 @@
+warning: in the working copy of 'package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'prisma.config.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'prisma/schema.prisma', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'prisma/seed.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'public/reset-password.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/app.controller.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/app.module.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/app.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/auth/auth.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/auth/guards/roles.guard.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/main.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/orders/dto/order-response.dto.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/orders/orders.controller.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/products/products.controller.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/products/products.repository.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/users/users.controller.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/users/users.repository.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/users/users.service.ts', LF will be replaced by CRLF the next time Git touches it
+ package-lock.json                    | 1459 [32m++++++++++++++++++++++++++++++[m[31m----[m
+ package.json                         |   10 [32m+[m[31m-[m
+ prisma.config.ts                     |    4 [32m+[m[31m-[m
+ prisma/schema.prisma                 |   10 [32m+[m
+ prisma/seed.ts                       |  170 [32m++++[m
+ public/reset-password.html           |  173 [32m+[m[31m---[m
+ public/style.css                     |  170 [32m++++[m
+ src/app.controller.ts                |    3 [31m-[m
+ src/app.module.ts                    |    8 [32m+[m[31m-[m
+ src/app.service.ts                   |    6 [31m-[m
+ src/auth/auth.service.ts             |   67 [32m+[m[31m-[m
+ src/auth/guards/roles.guard.ts       |    2 [32m+[m[31m-[m
+ src/main.ts                          |   12 [31m-[m
+ src/orders/dto/order-response.dto.ts |   16 [32m+[m
+ src/orders/orders.controller.ts      |   21 [32m+[m
+ src/products/products.controller.ts  |    1 [31m-[m
+ src/products/products.repository.ts  |    2 [31m-[m
+ src/users/users.controller.ts        |  112 [32m++[m[31m-[m
+ src/users/users.repository.ts        |   14 [32m+[m[31m-[m
+ src/users/users.service.ts           |   10 [32m+[m[31m-[m
+ 20 files changed, 1869 insertions(+), 401 deletions(-)

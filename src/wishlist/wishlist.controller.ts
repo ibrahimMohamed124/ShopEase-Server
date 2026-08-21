@@ -13,8 +13,8 @@ import {
 import { Request } from 'express';
 import { WishlistService } from './wishlist.service';
 import { AddToWishlistDto } from './dto/add-to-wishlist.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SafeUser } from '../auth/auth.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.ts';
 
 interface RequestWithUser extends Request {
   user: SafeUser;

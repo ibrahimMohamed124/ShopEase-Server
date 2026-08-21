@@ -15,17 +15,16 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { FindProductsQueryDto } from './dto/query-product.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../../generated/prisma/client';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.ts';
+import { RolesGuard } from '../common/guards/roles.guard.ts';
+import { Roles } from '../common/decorators/roles.decorator.ts';
 
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   // GET /products?category=&search=&page=&limit=
-  // ده اللي بينادَى من ProductService.fetchProducts() في الفلاتر
   @Get()
   findAll(@Query() query: FindProductsQueryDto) {
     return this.productsService.findAll(query);

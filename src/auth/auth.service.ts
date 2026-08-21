@@ -6,7 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 // @types/jsonwebtoken types `expiresIn` as `StringValue | number`, a template-literal
 // type (e.g. '15m', '30d'), not a plain `string` — so values read from ConfigService
 // (typed as `string`) need an explicit cast to satisfy the compiler.
@@ -32,6 +32,13 @@ export interface SafeUser {
 }
 
 const BCRYPT_ROUNDS = 12;
+
+// شوف الشرح في forgotPassword()/resetPassword() ليه SHA-256 (مش bcrypt)
+// آمن وكافي هنا: الـinput دايمًا high-entropy random token، مش secret
+// اليوزر بيختاره.
+function hashResetToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class AuthService {
@@ -72,7 +79,12 @@ export class AuthService {
     await this.persistRefreshToken(user.id, tokens.refreshToken);
 
     return {
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
       ...tokens,
     };
   }
@@ -104,11 +116,20 @@ export class AuthService {
       return;
     }
 
-    // Single-use, short-lived reset token. Only the hash is persisted —
-    // same pattern as refresh tokens — so a DB leak alone can't be used
-    // to reset anyone's password.
+    // Single-use, short-lived reset token. Only a hash is persisted — same
+    // pattern as refresh tokens — so a DB leak alone can't be used to
+    // reset anyone's password.
+    //
+    // [أمان] بنستخدم SHA-256 هنا مش bcrypt. الفرق عن الـpassword hashing
+    // العادي إن الـtoken نفسه عبارة عن 32 random bytes (256 bits entropy)
+    // من randomBytes — مش حاجة اليوزر مختارها زي الباسورد، فمفيش خطر
+    // dictionary/brute-force attack عليه حتى بـhash سريع. وده بيدينا فايدة
+    // مهمة: نقدر نعمل query مباشر بالـhash (findByResetTokenHash) بدل ما
+    // نلف على كل الـtokens الفعالة ونعمل bcrypt.compare (cost=12) لكل
+    // واحد فيهم — كان ده بيفتح باب resource-exhaustion لو حد قدر يعمل
+    // forgot-password لعدد كبير من الحسابات في وقت متقارب.
     const resetToken = randomBytes(RESET_TOKEN_BYTES).toString('hex');
-    const resetTokenHash = await bcrypt.hash(resetToken, BCRYPT_ROUNDS);
+    const resetTokenHash = hashResetToken(resetToken);
     const resetTokenExpiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
     await this.usersService.setResetToken(
@@ -123,7 +144,6 @@ export class AuthService {
     const resetUrl = `${appUrl}/reset-password.html?token=${resetToken}`;
     const expiresInMinutes = RESET_TOKEN_TTL_MS / 60000;
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     await this.mailService.sendPasswordResetEmail(
       user.email,
       user.name,
@@ -133,25 +153,24 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    // We only stored a hash, so we have to compare against every
-    // outstanding reset token — this table stays small since tokens are
-    // single-use and short-lived, so it's not a real cost.
-    const candidates = await this.usersService.findUsersWithActiveResetToken();
+    // [أمان] بدل ما نلف على كل اليوزرز اللي عندهم active reset token
+    // ونعمل bcrypt.compare لكل واحد، بنحسب SHA-256 hash للـtoken المبعوت
+    // ونعمل query مباشر بيه (indexed lookup). أمان الـtoken لسه محفوظ لأنه
+    // عالي entropy (256 bits) — شوف الشرح في forgotPassword() فوق.
+    const user = await this.usersService.findByResetTokenHash(
+      hashResetToken(token),
+    );
 
-    for (const candidate of candidates) {
-      if (!candidate.resetTokenHash) continue;
-      const matches = await bcrypt.compare(token, candidate.resetTokenHash);
-      if (matches) {
-        const newPasswordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-        await this.usersService.updatePasswordHash(
-          candidate.id,
-          newPasswordHash,
-        );
-        return;
-      }
+    if (
+      !user ||
+      !user.resetTokenExpiresAt ||
+      user.resetTokenExpiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    throw new UnauthorizedException('Invalid or expired reset token');
+    const newPasswordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.usersService.updatePasswordHash(user.id, newPasswordHash);
   }
 
   private async issueTokens(

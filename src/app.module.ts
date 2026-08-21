@@ -22,16 +22,10 @@ import { envValidationSchema } from './config/env.validation';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       validationSchema: envValidationSchema,
-      // بيوقف الـstartup كله لو فيه متغير required ناقص أو شكله غلط،
-      // بدل ما يشتغل السيرفر ويقع بعدين وسط request حقيقي
       validationOptions: { abortEarly: false },
     }),
-    // ليمِت افتراضي عام على كل الـAPI: 60 request لكل IP في الدقيقة.
-    // الـendpoints الحساسة (login/register/forgot-password) عندها
-    // ليمِت أضيق بالـ@Throttle() على مستوى الـcontroller نفسه.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+
     ThrottlerModule.forRoot([
       {
         name: 'default',

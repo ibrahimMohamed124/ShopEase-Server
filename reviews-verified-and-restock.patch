@@ -1,0 +1,897 @@
+From 26d6d791bc149490d2e77c7c3026fd69d162ec4c Mon Sep 17 00:00:00 2001
+From: ibrahimMohamed124 <ibrahimrs1234@gmail.com>
+Date: Thu, 20 Aug 2026 10:31:42 +0000
+Subject: [PATCH 1/2] fix(orders): restore stock when an order is cancelled
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Previously OrdersRepository.updateStatus() only flipped the order's
+status column — CheckoutRepository already decrements stockQuantity
+inside a transaction when an order is placed, but nothing reversed
+that decrement when the order was later cancelled (by an admin via
+PATCH /orders/:id/status or by the customer via PATCH /orders/:id/cancel).
+Net effect: a cancelled order permanently kept its stock deducted.
+
+- OrdersRepository.updateStatus() now accepts an optional
+  restockItems list; when present, the status update and the stock
+  increment for each item run inside the same $transaction, so a
+  failure on either side rolls back both. Uses product.updateMany()
+  (not update()) so a since-deleted product is skipped instead of
+  throwing P2025 and aborting the whole transaction.
+- OrdersService computes restockItems from the order's snapshot items
+  only when the transition is an actual PROCESSING/SHIPPED -> CANCELLED
+  move (current.status !== status), not on an idempotent re-cancel of
+  an already-CANCELLED order — otherwise stock would be restored twice.
+  Applied to both the admin updateStatus() path and the customer-facing
+  cancelForUser() path.
+- orders.service.spec.ts: added coverage for admin cancel + restock,
+  customer self-cancel + restock, and the double-restock idempotency
+  guard on repeated cancellation.
+---
+ src/orders/orders.repository.ts   |  63 +++++++-
+ src/orders/orders.service.spec.ts | 242 ++++++++++++++++++++++++++++++
+ src/orders/orders.service.ts      | 225 ++++++++++++++++++++++++++-
+ 3 files changed, 525 insertions(+), 5 deletions(-)
+ create mode 100644 src/orders/orders.service.spec.ts
+
+diff --git a/src/orders/orders.repository.ts b/src/orders/orders.repository.ts
+index d8b8c78..4db2441 100644
+--- a/src/orders/orders.repository.ts
++++ b/src/orders/orders.repository.ts
+@@ -37,11 +37,68 @@ export class OrdersRepository {
+     });
+   }
+ 
+-  updateStatus(id: string, status: OrderStatus): Promise<OrderWithItems> {
+-    return this.prisma.order.update({
++  // بيتنادى بس من OrdersService.updateStatus() (admin-only route، شوف
++  // RolesGuard في OrdersController) عشان نجيب الحالة الحالية للأوردر
++  // ونتحقق من صحة الانتقال قبل ما نكتب. من غير userId scoping عمدًا —
++  // الأدمن لازم يقدر يدير أي أوردر، على عكس findOneForUser فوق.
++  findById(id: string): Promise<OrderWithItems | null> {
++    return this.prisma.order.findUnique({
+       where: { id },
+-      data: { status },
+       include: ORDER_INCLUDE,
+     });
+   }
++
++  // [تعديل] — بقت بتاخد extraData اختياري عشان تسجل shippedAt/deliveredAt
++  // في نفس لحظة تغيير الحالة (بدل ما نحتاج update تاني منفصل). القيمة
++  // الافتراضية {} عشان أي نداء قديم لسه شغال زي ما هو من غير أي تعديل.
++  //
++  // [تعديل] — بقت بتاخد restockItems اختياري كمان. لو موجودة (يعني
++  // OrdersService قرر إن الانتقال ده لـCANCELLED فعلي، مش no-op)، بنرجّع
++  // الستوك جوه *نفس* الـtransaction اللي بتغيّر الحالة — بالظبط عكس اللي
++  // CheckoutRepository.createOrder() بيعمله وقت الخصم. لو أي خطوة فشلت
++  // (مثلاً الداتابيز وقعت في النص)، لا الحالة بتتغيّر ولا الستوك بيترجع،
++  // فمفيش سيناريو "الأوردر اتلغى بس الستوك فضل ناقص" أو العكس.
++  updateStatus(
++    id: string,
++    status: OrderStatus,
++    extraData: Prisma.OrderUpdateInput = {},
++    restockItems?: { productId: string; quantity: number }[],
++  ): Promise<OrderWithItems> {
++    if (!restockItems || restockItems.length === 0) {
++      return this.prisma.order.update({
++        where: { id },
++        data: { status, ...extraData },
++        include: ORDER_INCLUDE,
++      });
++    }
++
++    return this.prisma.$transaction(async (tx) => {
++      const order = await tx.order.update({
++        where: { id },
++        data: { status, ...extraData },
++        include: ORDER_INCLUDE,
++      });
++
++      for (const item of restockItems) {
++        // updateMany بدل update عادي عمدًا: OrderItem.productId عمود
++        // عادي مش FK حقيقي لـProduct (شوف الكومنت في schema.prisma) —
++        // المنتج ممكن يكون اتحذف خالص بعد ما الأوردر اتعمل. update()
++        // العادي كان هيرمي P2025 (record not found) ويفشّل الـtransaction
++        // كلها بسبب منتج واحد محذوف؛ updateMany على where بيرجع 0 صفوف
++        // متأثرة بهدوء بدل ما يرمي، فباقي عناصر الأوردر بيترجع ستوكهم عادي.
++        await tx.product.updateMany({
++          where: { id: item.productId },
++          data: {
++            stockQuantity: { increment: item.quantity },
++            // بعد ما نزوّد الكمية بمقدار اللي كان محجوز للأوردر ده، الستوك
++            // مضمون إنه > 0 (كان صفر أو أكتر قبل كده + الكمية دي)، فتحديد
++            // inStock=true هنا مباشر وآمن من غير الحاجة لقراءة تانية.
++            inStock: true,
++          },
++        });
++      }
++
++      return order;
++    });
++  }
+ }
+diff --git a/src/orders/orders.service.spec.ts b/src/orders/orders.service.spec.ts
+new file mode 100644
+index 0000000..ad28ae3
+--- /dev/null
++++ b/src/orders/orders.service.spec.ts
+@@ -0,0 +1,242 @@
++import { BadRequestException, NotFoundException } from '@nestjs/common';
++import { OrdersService } from './orders.service';
++import { OrdersRepository, OrderWithItems } from './orders.repository';
++import { OrderStatus } from '../../generated/prisma/client';
++
++// [أمان] الاختبارات دي بتتأكد إن OrdersService.updateStatus() بترفض أي
++// انتقال حالة مش منطقي (زي DELIVERED -> PROCESSING)، بعد ما كانت بتقبل أي
++// OrderStatus من الـenum من غير أي تحقق.
++//
++// [تعديل] — بعد إضافة shippedAt/deliveredAt، updateStatus() بقت بتنادي
++// repository.updateStatus بـ3 arguments مش 2 (id, status, extraData).
++// makeOrder() بقت بتاخد shippedAt/deliveredAt اختياريين عشان تحاكي أوردر
++// "اتشحن بالفعل من قبل" في اختبار الـidempotency تحت.
++//
++// [تعديل] — بقت بتاخد items اختيارية كمان عشان اختبارات restock تحت
++// (استعادة الستوك عند الإلغاء) تقدر تحاكي أوردر عنده عناصر حقيقية.
++function makeOrder(
++  status: OrderStatus,
++  extra: Partial<
++    Pick<OrderWithItems, 'shippedAt' | 'deliveredAt' | 'items'>
++  > = {},
++): OrderWithItems {
++  return {
++    id: 'order-1',
++    userId: 'user-1',
++    status,
++    total: 100 as unknown as OrderWithItems['total'],
++    items: [],
++    createdAt: new Date(),
++    updatedAt: new Date(),
++    shippedAt: null,
++    deliveredAt: null,
++    ...extra,
++  } as unknown as OrderWithItems;
++}
++
++const SAMPLE_ITEMS = [
++  { productId: 'prod-1', quantity: 2 },
++  { productId: 'prod-2', quantity: 1 },
++] as unknown as OrderWithItems['items'];
++
++describe('OrdersService.updateStatus', () => {
++  let repository: jest.Mocked<
++    Pick<OrdersRepository, 'findById' | 'updateStatus'>
++  >;
++  let service: OrdersService;
++
++  beforeEach(() => {
++    repository = {
++      findById: jest.fn(),
++      updateStatus: jest.fn(),
++    };
++    service = new OrdersService(repository as unknown as OrdersRepository);
++  });
++
++  it('throws NotFoundException when the order does not exist', async () => {
++    repository.findById.mockResolvedValue(null);
++
++    await expect(
++      service.updateStatus('missing', OrderStatus.SHIPPED),
++    ).rejects.toBeInstanceOf(NotFoundException);
++    expect(repository.updateStatus).not.toHaveBeenCalled();
++  });
++
++  it('allows PROCESSING -> SHIPPED and stamps shippedAt', async () => {
++    repository.findById.mockResolvedValue(makeOrder(OrderStatus.PROCESSING));
++    repository.updateStatus.mockResolvedValue(
++      makeOrder(OrderStatus.SHIPPED, { shippedAt: new Date() }),
++    );
++
++    await service.updateStatus('order-1', OrderStatus.SHIPPED);
++    expect(repository.updateStatus).toHaveBeenCalledWith(
++      'order-1',
++      OrderStatus.SHIPPED,
++      { shippedAt: expect.any(Date) },
++      undefined,
++    );
++  });
++
++  // [جديد] — لما الأدمن يلغي أوردر، لازم الستوك يترجع. الاختبار ده بيتأكد
++  // إن OrdersService بيبعت restockItems لـrepository.updateStatus مبنية
++  // بالظبط على current.items (productId + quantity)، مش أي مصدر تاني —
++  // ده اللي بيضمن إن اللي بيترجع هو بالظبط اللي اتخصم وقت الـcheckout.
++  it('allows PROCESSING -> CANCELLED, does not touch shippedAt/deliveredAt, and restocks items', async () => {
++    repository.findById.mockResolvedValue(
++      makeOrder(OrderStatus.PROCESSING, { items: SAMPLE_ITEMS }),
++    );
++    repository.updateStatus.mockResolvedValue(
++      makeOrder(OrderStatus.CANCELLED),
++    );
++
++    await service.updateStatus('order-1', OrderStatus.CANCELLED);
++    expect(repository.updateStatus).toHaveBeenCalledWith(
++      'order-1',
++      OrderStatus.CANCELLED,
++      {},
++      [
++        { productId: 'prod-1', quantity: 2 },
++        { productId: 'prod-2', quantity: 1 },
++      ],
++    );
++  });
++
++  it('allows SHIPPED -> DELIVERED and stamps deliveredAt', async () => {
++    repository.findById.mockResolvedValue(
++      makeOrder(OrderStatus.SHIPPED, { shippedAt: new Date() }),
++    );
++    repository.updateStatus.mockResolvedValue(
++      makeOrder(OrderStatus.DELIVERED, {
++        shippedAt: new Date(),
++        deliveredAt: new Date(),
++      }),
++    );
++
++    await service.updateStatus('order-1', OrderStatus.DELIVERED);
++    expect(repository.updateStatus).toHaveBeenCalledWith(
++      'order-1',
++      OrderStatus.DELIVERED,
++      { deliveredAt: expect.any(Date) },
++      undefined,
++    );
++  });
++
++  it('rejects DELIVERED -> PROCESSING', async () => {
++    repository.findById.mockResolvedValue(makeOrder(OrderStatus.DELIVERED));
++
++    await expect(
++      service.updateStatus('order-1', OrderStatus.PROCESSING),
++    ).rejects.toBeInstanceOf(BadRequestException);
++    expect(repository.updateStatus).not.toHaveBeenCalled();
++  });
++
++  it('rejects CANCELLED -> SHIPPED', async () => {
++    repository.findById.mockResolvedValue(makeOrder(OrderStatus.CANCELLED));
++
++    await expect(
++      service.updateStatus('order-1', OrderStatus.SHIPPED),
++    ).rejects.toBeInstanceOf(BadRequestException);
++    expect(repository.updateStatus).not.toHaveBeenCalled();
++  });
++
++  it('rejects PROCESSING -> DELIVERED (skipping SHIPPED)', async () => {
++    repository.findById.mockResolvedValue(makeOrder(OrderStatus.PROCESSING));
++
++    await expect(
++      service.updateStatus('order-1', OrderStatus.DELIVERED),
++    ).rejects.toBeInstanceOf(BadRequestException);
++    expect(repository.updateStatus).not.toHaveBeenCalled();
++  });
++
++  it('treats setting the same status as a no-op (idempotent) and does not re-stamp shippedAt', async () => {
++    const alreadyShipped = makeOrder(OrderStatus.SHIPPED, {
++      shippedAt: new Date(),
++    });
++    repository.findById.mockResolvedValue(alreadyShipped);
++    repository.updateStatus.mockResolvedValue(alreadyShipped);
++
++    await service.updateStatus('order-1', OrderStatus.SHIPPED);
++    expect(repository.updateStatus).toHaveBeenCalledWith(
++      'order-1',
++      OrderStatus.SHIPPED,
++      {},
++      undefined,
++    );
++  });
++
++  // [جديد] — re-cancelling an already-CANCELLED order (idempotent no-op,
++  // نفس فكرة اختبار SHIPPED فوق) لازم ميرجعش الستوك تاني — current.status
++  // بالفعل CANCELLED فبنعدي على `if (current.status !== status)` من غير
++  // ما نلمس الـstatus أو نحسب restockItems أصلًا.
++  it('treats re-cancelling an already-cancelled order as a no-op and does not restock', async () => {
++    const alreadyCancelled = makeOrder(OrderStatus.CANCELLED, {
++      items: SAMPLE_ITEMS,
++    });
++    repository.findById.mockResolvedValue(alreadyCancelled);
++    repository.updateStatus.mockResolvedValue(alreadyCancelled);
++
++    await service.updateStatus('order-1', OrderStatus.CANCELLED);
++    expect(repository.updateStatus).toHaveBeenCalledWith(
++      'order-1',
++      OrderStatus.CANCELLED,
++      {},
++      undefined,
++    );
++  });
++});
++
++describe('OrdersService.cancelForUser', () => {
++  let repository: jest.Mocked<
++    Pick<OrdersRepository, 'findOneForUser' | 'updateStatus'>
++  >;
++  let service: OrdersService;
++
++  beforeEach(() => {
++    repository = {
++      findOneForUser: jest.fn(),
++      updateStatus: jest.fn(),
++    };
++    service = new OrdersService(repository as unknown as OrdersRepository);
++  });
++
++  it('throws NotFoundException when the order does not belong to the user', async () => {
++    repository.findOneForUser.mockResolvedValue(null);
++
++    await expect(
++      service.cancelForUser('user-1', 'order-1'),
++    ).rejects.toBeInstanceOf(NotFoundException);
++    expect(repository.updateStatus).not.toHaveBeenCalled();
++  });
++
++  it('rejects cancelling an order that is no longer PROCESSING', async () => {
++    repository.findOneForUser.mockResolvedValue(
++      makeOrder(OrderStatus.SHIPPED, { items: SAMPLE_ITEMS }),
++    );
++
++    await expect(
++      service.cancelForUser('user-1', 'order-1'),
++    ).rejects.toBeInstanceOf(BadRequestException);
++    expect(repository.updateStatus).not.toHaveBeenCalled();
++  });
++
++  // [جديد] — العميل بيلغي أوردره وهو لسه PROCESSING؛ لازم الستوك يترجع
++  // بنفس الكميات اللي في order.items، بالظبط زي مسار الأدمن فوق.
++  it('cancels a PROCESSING order and restocks its items', async () => {
++    const order = makeOrder(OrderStatus.PROCESSING, { items: SAMPLE_ITEMS });
++    repository.findOneForUser.mockResolvedValue(order);
++    repository.updateStatus.mockResolvedValue(
++      makeOrder(OrderStatus.CANCELLED),
++    );
++
++    await service.cancelForUser('user-1', 'order-1');
++    expect(repository.updateStatus).toHaveBeenCalledWith(
++      'order-1',
++      OrderStatus.CANCELLED,
++      {},
++      [
++        { productId: 'prod-1', quantity: 2 },
++        { productId: 'prod-2', quantity: 1 },
++      ],
++    );
++  });
++});
+diff --git a/src/orders/orders.service.ts b/src/orders/orders.service.ts
+index 02098af..d937f62 100644
+--- a/src/orders/orders.service.ts
++++ b/src/orders/orders.service.ts
+@@ -1,7 +1,35 @@
+-import { Injectable, NotFoundException } from '@nestjs/common';
++import {
++  BadRequestException,
++  Injectable,
++  NotFoundException,
++} from '@nestjs/common';
+ import { OrderStatus } from '../../generated/prisma/client';
+ import { OrdersRepository, OrderWithItems } from './orders.repository';
+ import { OrderResponseDto } from './dto/order-response.dto';
++import {
++  OrderTrackingResponseDto,
++  TrackingStepResponseDto,
++} from './dto/order-tracking-response.dto';
++
++// [أمان/business logic] state machine بسيطة للانتقالات المسموحة بين
++// حالات الأوردر. من غيرها، updateStatus() كان بيقبل أي OrderStatus من
++// الـenum من غير أي تحقق — يعني admin (أو bug في dashboard مستقبلي) كان
++// يقدر يرجّع أوردر من DELIVERED لـPENDING أو أي انتقال غير منطقي.
++// DELIVERED وCANCELLED terminal states: مفيش رجوع منهم لأي حالة تانية.
++const ALLOWED_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
++  [OrderStatus.PROCESSING]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
++  [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
++  [OrderStatus.DELIVERED]: [],
++  [OrderStatus.CANCELLED]: [],
++};
++
++// [جديد] — مفيش SLA حقيقي متعاقد عليه مع أي شركة شحن، ده رقم تقديري بس
++// (5 أيام عمل من وقت الطلب) عشان نعرض "estimated delivery" معقولة للعميل
++// لحد ما يتسلّم فعليًا. لو اتضاف شحن حقيقي بعدين، ده أول مكان يتغيّر فيه.
++const ESTIMATED_DELIVERY_DAYS = 5;
++
++// [جديد] — مفيش courier حقيقي متكامل، منصة واحدة بس بتشحن كل الأوردرات
++const DEFAULT_COURIER = 'ShopEase Express';
+ 
+ @Injectable()
+ export class OrdersService {
+@@ -28,10 +56,200 @@ export class OrdersService {
+     id: string,
+     status: OrderStatus,
+   ): Promise<OrderResponseDto> {
+-    const order = await this.ordersRepository.updateStatus(id, status);
++    const current = await this.ordersRepository.findById(id);
++    if (!current) {
++      throw new NotFoundException('Order not found');
++    }
++
++    // نفس الحالة الحالية مش "انتقال" — بنسمح بيها كـno-op (idempotent) بدل
++    // ما نرميها كـinvalid transition.
++    if (current.status !== status) {
++      const allowedNextStatuses = ALLOWED_STATUS_TRANSITIONS[current.status];
++      if (!allowedNextStatuses.includes(status)) {
++        throw new BadRequestException(
++          `Cannot transition order from ${current.status} to ${status}`,
++        );
++      }
++    }
++
++    // [جديد] — بنسجل shippedAt/deliveredAt أول مرة بس الأوردر يوصل للحالة
++    // دي فعليًا (مش بنكتب فوقهم تاني لو حد عمل نداء idempotent بنفس
++    // الحالة)، عشان تفضل التواريخ دي حقيقية ومايتغيّروش بالغلط
++    const extraData: { shippedAt?: Date; deliveredAt?: Date } = {};
++    if (status === OrderStatus.SHIPPED && !current.shippedAt) {
++      extraData.shippedAt = new Date();
++    }
++    if (status === OrderStatus.DELIVERED && !current.deliveredAt) {
++      extraData.deliveredAt = new Date();
++    }
++
++    // [تعديل] — لازم نتأكد إن ده انتقال حقيقي لـCANCELLED (current.status
++    // كان حاجة تانية قبل كده)، مش نداء idempotent بنفس CANCELLED — وإلا
++    // كنا هنرجّع نفس الستوك مرتين لو الأدمن ضغط "إلغاء" على أوردر ملغي
++    // بالفعل. current.status !== status هنا يضمن إننا فعلاً بندخل فرع
++    // "انتقال حقيقي" مش no-op (شوف التحقق فوق).
++    const restockItems =
++      status === OrderStatus.CANCELLED && current.status !== status
++        ? this.toRestockItems(current)
++        : undefined;
++
++    const order = await this.ordersRepository.updateStatus(
++      id,
++      status,
++      extraData,
++      restockItems,
++    );
+     return this.toResponse(order);
+   }
+ 
++  // [جديد] — PATCH /orders/:id/cancel: العميل بيلغي أوردره هو (مش أي أوردر
++  // زي updateStatus فوق اللي أدمن بس). بنستخدم findOneForUser (نفس اللي GET
++  // /orders/:id بيستخدمه) عشان نتأكد إن الأوردر ده بتاع نفس اليوزر أصلًا —
++  // من غيرها أي يوزر يعرف id أوردر حد تاني كان يقدر يلغيه.
++  // مسموح بس لو لسه PROCESSING (زي Order.isCancellable في الفلاتر بالظبط)؛
++  // أوردر اتشحن أو اتسلم أو اتلغى بالفعل، العميل مايقدرش يلغيه من هنا —
++  // ده قرار عمدًا أضيق من ALLOWED_STATUS_TRANSITIONS اللي فوق (اللي بتسمح
++  // للأدمن يلغي حتى SHIPPED)، لأن ده self-service مش admin action.
++  async cancelForUser(
++    userId: string,
++    id: string,
++  ): Promise<OrderResponseDto> {
++    const order = await this.ordersRepository.findOneForUser(userId, id);
++    if (!order) {
++      throw new NotFoundException('Order not found');
++    }
++
++    if (order.status !== OrderStatus.PROCESSING) {
++      throw new BadRequestException(
++        'Only orders that are still processing can be cancelled.',
++      );
++    }
++
++    // [تعديل] — نفس منطق الاستعادة اللي في updateStatus فوق (المسار
++    // الإداري)، هنا للـself-service cancel. order.status === PROCESSING
++    // مضمون فوق، يعني ده أول انتقال حقيقي لـCANCELLED مش no-op، فالاستعادة
++    // مأمونة (مش هترجع الستوك مرتين لنفس الأوردر).
++    const updated = await this.ordersRepository.updateStatus(
++      id,
++      OrderStatus.CANCELLED,
++      {},
++      this.toRestockItems(order),
++    );
++    return this.toResponse(updated);
++  }
++
++  // Order.items بيحتوي على snapshot كل عنصر (productId + quantity) وقت
++  // الطلب — نفس الكميات اللي CheckoutRepository.createOrder() خصمها من
++  // stockQuantity وقت إنشاء الأوردر، فترجيعها هنا بالظبط عكس العملية دي.
++  private toRestockItems(
++    order: OrderWithItems,
++  ): { productId: string; quantity: number }[] {
++    return order.items.map((item) => ({
++      productId: item.productId,
++      quantity: item.quantity,
++    }));
++  }
++
++  // [جديد] — GET /orders/:id/tracking. نفس ownership check بتاع findOneForUser
++  // (العميل بس يقدر يتتبع أوردره هو)، وبعدين بنبني timeline من الحالة الحالية
++  // + shippedAt/deliveredAt الحقيقيين. مفيش "Out for Delivery" كخطوة منفصلة
++  // عمدًا — مفيش state حقيقي بيتخزن عن اللحظة دي، وإضافتها كانت هتبقى تاريخ
++  // وهمي مش مبني على بيانات فعلية.
++  async getTracking(
++    userId: string,
++    id: string,
++  ): Promise<OrderTrackingResponseDto> {
++    const order = await this.ordersRepository.findOneForUser(userId, id);
++    if (!order) {
++      throw new NotFoundException('Order not found');
++    }
++
++    return {
++      orderId: order.id,
++      trackingNumber: this.buildTrackingNumber(order.id),
++      courier: DEFAULT_COURIER,
++      estimatedDelivery: this.computeEstimatedDelivery(order),
++      currentLocation: null, // مفيش logistics API حقيقي بيدّينا الموقع اللحظي
++      steps: this.buildTrackingSteps(order),
++    };
++  }
++
++  private buildTrackingSteps(order: OrderWithItems): TrackingStepResponseDto[] {
++    if (order.status === OrderStatus.CANCELLED) {
++      return [
++        {
++          title: 'Order Placed',
++          description: null,
++          timestamp: order.createdAt.toISOString(),
++          isCompleted: true,
++          isCurrent: false,
++        },
++        {
++          title: 'Order Cancelled',
++          description: null,
++          timestamp: order.updatedAt.toISOString(),
++          isCompleted: true,
++          isCurrent: true,
++        },
++      ];
++    }
++
++    const isShippedOrLater =
++      order.status === OrderStatus.SHIPPED ||
++      order.status === OrderStatus.DELIVERED;
++    const isDelivered = order.status === OrderStatus.DELIVERED;
++
++    return [
++      {
++        title: 'Order Placed',
++        description: 'We received your order.',
++        timestamp: order.createdAt.toISOString(),
++        isCompleted: true,
++        isCurrent: false,
++      },
++      {
++        title: 'Processing',
++        description: 'Preparing your items for shipment.',
++        timestamp: order.createdAt.toISOString(),
++        isCompleted: isShippedOrLater,
++        isCurrent: order.status === OrderStatus.PROCESSING,
++      },
++      {
++        title: 'Shipped',
++        description: 'Your order is on its way.',
++        timestamp: order.shippedAt?.toISOString() ?? null,
++        isCompleted: isDelivered,
++        isCurrent: order.status === OrderStatus.SHIPPED,
++      },
++      {
++        title: 'Delivered',
++        description: 'Your order has arrived.',
++        timestamp: order.deliveredAt?.toISOString() ?? null,
++        isCompleted: isDelivered,
++        isCurrent: isDelivered,
++      },
++    ];
++  }
++
++  // نفس الـid ينتج نفس رقم التتبع دايمًا (deterministic)، مش عشوائي —
++  // من غير ما نحتاج نخزّن أي عمود جديد في الداتابيز لبيانات مش حقيقية أصلًا
++  private buildTrackingNumber(orderId: string): string {
++    const suffix = orderId.slice(-8).toUpperCase();
++    return `TRK-${suffix}`;
++  }
++
++  private computeEstimatedDelivery(order: OrderWithItems): string | null {
++    if (
++      order.status === OrderStatus.DELIVERED ||
++      order.status === OrderStatus.CANCELLED
++    ) {
++      return null;
++    }
++    const estimated = new Date(order.createdAt);
++    estimated.setDate(estimated.getDate() + ESTIMATED_DELIVERY_DAYS);
++    return estimated.toISOString();
++  }
++
+   // public عشان CheckoutService (مديول تاني) يستخدمها كمان — response الـ
+   // POST /orders لازم يفضل بنفس شكل response الـGET بالظبط، مصدر واحد
+   // للـmapping بدل ما يتكرر في المكانين
+@@ -48,6 +266,9 @@ export class OrdersService {
+         price: Number(item.price),
+         quantity: item.quantity,
+       })),
++      estimatedDelivery: this.computeEstimatedDelivery(order),
++      deliveredDate: order.deliveredAt?.toISOString() ?? null,
++      paymentMethod: order.paymentMethod,
+     };
+   }
+ }
+-- 
+2.43.0
+
+
+From b0c05ebd2efb05d73fd36946149c3d9aa5c17436 Mon Sep 17 00:00:00 2001
+From: ibrahimMohamed124 <ibrahimrs1234@gmail.com>
+Date: Thu, 20 Aug 2026 10:32:09 +0000
+Subject: [PATCH 2/2] feat(reviews): compute verified from delivered orders
+ instead of hardcoded false
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ReviewsService.create() previously left verified: false unconditionally
+with a TODO saying Orders module didn't exist yet to check against — it
+does now, and the TODO was stale.
+
+- OrdersRepository.hasDeliveredOrderForProduct(userId, productId):
+  looks for an OrderItem with the given productId on an order (a)
+  owned by the same user and (b) in DELIVERED status. Deliberately
+  requires DELIVERED, not just 'has an order containing this product'
+  — otherwise anyone could get a verified review by adding the item
+  to an order and cancelling it immediately.
+- ReviewsModule now imports OrdersModule (already exported
+  OrdersRepository, no changes needed there) to inject it into
+  ReviewsService. No circular dependency: OrdersModule has no import
+  back to ReviewsModule or ProductsModule.
+- ReviewsService.create() calls hasDeliveredOrderForProduct() and uses
+  the result as the review's verified flag instead of the literal
+  false.
+- reviews.service.spec.ts (new): covers verified=true with a delivered
+  order, verified=false with none, the existing duplicate-review
+  rejection, and the product-not-found 404 short-circuiting before the
+  orders lookup.
+---
+ src/orders/orders.repository.ts     |  20 ++++
+ src/reviews/reviews.module.ts       |   3 +-
+ src/reviews/reviews.service.spec.ts | 139 ++++++++++++++++++++++++++++
+ src/reviews/reviews.service.ts      |  16 +++-
+ 4 files changed, 174 insertions(+), 4 deletions(-)
+ create mode 100644 src/reviews/reviews.service.spec.ts
+
+diff --git a/src/orders/orders.repository.ts b/src/orders/orders.repository.ts
+index 4db2441..e66a876 100644
+--- a/src/orders/orders.repository.ts
++++ b/src/orders/orders.repository.ts
+@@ -48,6 +48,26 @@ export class OrdersRepository {
+     });
+   }
+ 
++  // [جديد] — بيتنادى من ReviewsService.create() عشان يحدد قيمة verified:
++  // بندوّر على OrderItem بنفس الـproductId جوه أوردر (a) بتاع نفس اليوزر
++  // و(b) وصله فعلًا لحالة DELIVERED. مش بس "طلبه" — لازم يكون استلمه
++  // فعليًا، وإلا كان أي حد يقدر يعمل review "verified" بمجرد إنه يحط
++  // المنتج في أوردر ويلغيه فورًا. findFirst كافية هنا (بنسأل سؤال
++  // boolean، مش محتاجين كل الصفوف المطابقة).
++  async hasDeliveredOrderForProduct(
++    userId: string,
++    productId: string,
++  ): Promise<boolean> {
++    const match = await this.prisma.orderItem.findFirst({
++      where: {
++        productId,
++        order: { userId, status: OrderStatus.DELIVERED },
++      },
++      select: { id: true },
++    });
++    return match !== null;
++  }
++
+   // [تعديل] — بقت بتاخد extraData اختياري عشان تسجل shippedAt/deliveredAt
+   // في نفس لحظة تغيير الحالة (بدل ما نحتاج update تاني منفصل). القيمة
+   // الافتراضية {} عشان أي نداء قديم لسه شغال زي ما هو من غير أي تعديل.
+diff --git a/src/reviews/reviews.module.ts b/src/reviews/reviews.module.ts
+index 7b650ce..d3eaa82 100644
+--- a/src/reviews/reviews.module.ts
++++ b/src/reviews/reviews.module.ts
+@@ -3,9 +3,10 @@ import { ReviewsController } from './reviews.controller';
+ import { ReviewsService } from './reviews.service';
+ import { ReviewsRepository } from './reviews.repository';
+ import { ProductsModule } from '../products/products.module';
++import { OrdersModule } from '../orders/orders.module';
+ 
+ @Module({
+-  imports: [ProductsModule],
++  imports: [ProductsModule, OrdersModule],
+   controllers: [ReviewsController],
+   providers: [ReviewsService, ReviewsRepository],
+ })
+diff --git a/src/reviews/reviews.service.spec.ts b/src/reviews/reviews.service.spec.ts
+new file mode 100644
+index 0000000..28d77b3
+--- /dev/null
++++ b/src/reviews/reviews.service.spec.ts
+@@ -0,0 +1,139 @@
++import { BadRequestException, NotFoundException } from '@nestjs/common';
++import { ReviewsService } from './reviews.service';
++import { ReviewsRepository, ReviewRecord } from './reviews.repository';
++import { ProductsRepository } from '../products/products.repository';
++import { OrdersRepository } from '../orders/orders.repository';
++import { SafeUser } from '../auth/auth.service';
++import { Role } from '../../generated/prisma/client';
++
++// [جديد] — بيتأكد إن ReviewsService.create() بقى بيحسب verified فعليًا
++// (بدل ما تفضل false ثابتة زي قبل ما Orders module يتضاف). verified لازم
++// تبقى true لو وبس لو عند اليوزر أوردر DELIVERED فيه نفس المنتج —
++// "طلبه" بس أو أوردر لسه PROCESSING/CANCELLED مش كفاية.
++function makeReview(overrides: Partial<ReviewRecord> = {}): ReviewRecord {
++  return {
++    id: 'review-1',
++    productId: 'product-1',
++    userId: 'user-1',
++    name: 'Test User',
++    rating: 5,
++    text: 'Great product',
++    verified: false,
++    helpfulCount: 0,
++    createdAt: new Date(),
++    updatedAt: new Date(),
++    ...overrides,
++  } as unknown as ReviewRecord;
++}
++
++const USER: SafeUser = {
++  id: 'user-1',
++  name: 'Test User',
++  email: 'user@example.com',
++  role: Role.USER,
++};
++
++describe('ReviewsService.create', () => {
++  let reviewsRepository: jest.Mocked<
++    Pick<
++      ReviewsRepository,
++      'findByProductAndUser' | 'create' | 'aggregateForProduct'
++    >
++  >;
++  let productsRepository: jest.Mocked<Pick<ProductsRepository, 'findById'>>;
++  let ordersRepository: jest.Mocked<
++    Pick<OrdersRepository, 'hasDeliveredOrderForProduct'>
++  >;
++  let service: ReviewsService;
++
++  beforeEach(() => {
++    reviewsRepository = {
++      findByProductAndUser: jest.fn(),
++      create: jest.fn(),
++      aggregateForProduct: jest.fn(),
++    };
++    productsRepository = {
++      findById: jest.fn(),
++    };
++    ordersRepository = {
++      hasDeliveredOrderForProduct: jest.fn(),
++    };
++
++    productsRepository.findById.mockResolvedValue({
++      id: 'product-1',
++    } as never);
++    reviewsRepository.findByProductAndUser.mockResolvedValue(null);
++    reviewsRepository.aggregateForProduct.mockResolvedValue({
++      average: 5,
++      count: 1,
++    });
++
++    service = new ReviewsService(
++      reviewsRepository as unknown as ReviewsRepository,
++      productsRepository as unknown as ProductsRepository,
++      ordersRepository as unknown as OrdersRepository,
++    );
++
++    // products.repository أيضًا محتاجة updateRatingSummary — بنعرّفها
++    // كـno-op هنا عشان refreshProductRatingSummary() متفشلش
++    (productsRepository as unknown as ProductsRepository).updateRatingSummary =
++      jest.fn().mockResolvedValue(undefined);
++  });
++
++  it('marks the review verified when the user has a DELIVERED order for the product', async () => {
++    ordersRepository.hasDeliveredOrderForProduct.mockResolvedValue(true);
++    reviewsRepository.create.mockResolvedValue(
++      makeReview({ verified: true }),
++    );
++
++    const result = await service.create('product-1', USER, {
++      rating: 5,
++      text: 'Great product',
++    });
++
++    expect(ordersRepository.hasDeliveredOrderForProduct).toHaveBeenCalledWith(
++      'user-1',
++      'product-1',
++    );
++    expect(reviewsRepository.create).toHaveBeenCalledWith(
++      expect.objectContaining({ verified: true }),
++    );
++    expect(result.verified).toBe(true);
++  });
++
++  it('marks the review unverified when the user never received the product', async () => {
++    ordersRepository.hasDeliveredOrderForProduct.mockResolvedValue(false);
++    reviewsRepository.create.mockResolvedValue(
++      makeReview({ verified: false }),
++    );
++
++    const result = await service.create('product-1', USER, {
++      rating: 4,
++      text: 'It was okay',
++    });
++
++    expect(reviewsRepository.create).toHaveBeenCalledWith(
++      expect.objectContaining({ verified: false }),
++    );
++    expect(result.verified).toBe(false);
++  });
++
++  it('rejects a second review from the same user on the same product', async () => {
++    reviewsRepository.findByProductAndUser.mockResolvedValue(makeReview());
++
++    await expect(
++      service.create('product-1', USER, { rating: 3, text: 'Again' }),
++    ).rejects.toBeInstanceOf(BadRequestException);
++    expect(ordersRepository.hasDeliveredOrderForProduct).not.toHaveBeenCalled();
++    expect(reviewsRepository.create).not.toHaveBeenCalled();
++  });
++
++  it('throws NotFoundException when the product does not exist', async () => {
++    productsRepository.findById.mockResolvedValue(null);
++
++    await expect(
++      service.create('missing-product', USER, { rating: 3, text: 'Hmm' }),
++    ).rejects.toBeInstanceOf(NotFoundException);
++    expect(ordersRepository.hasDeliveredOrderForProduct).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/reviews/reviews.service.ts b/src/reviews/reviews.service.ts
+index f7535fe..dd9a021 100644
+--- a/src/reviews/reviews.service.ts
++++ b/src/reviews/reviews.service.ts
+@@ -6,6 +6,7 @@ import {
+ } from '@nestjs/common';
+ import { ReviewsRepository, ReviewRecord } from './reviews.repository';
+ import { ProductsRepository } from '../products/products.repository';
++import { OrdersRepository } from '../orders/orders.repository';
+ import { CreateReviewDto } from './dto/create-review.dto';
+ import { UpdateReviewDto } from './dto/update-review.dto';
+ import { SafeUser } from '../auth/auth.service';
+@@ -27,6 +28,7 @@ export class ReviewsService {
+   constructor(
+     private readonly reviewsRepository: ReviewsRepository,
+     private readonly productsRepository: ProductsRepository,
++    private readonly ordersRepository: OrdersRepository,
+   ) {}
+ 
+   async findAllForProduct(productId: string): Promise<ReviewResponse[]> {
+@@ -50,15 +52,23 @@ export class ReviewsService {
+       throw new BadRequestException('You have already reviewed this product');
+     }
+ 
+-    // TODO: مفيش Orders module لسه نتحقق بيه إن اليوزر فعلًا اشترى المنتج،
+-    // فـverified بتفضل false لحد ما نضيف ربط حقيقي بسجل الطلبات
++    // [تعديل] — Orders module موجود دلوقتي، فـverified بقت بتتحسب فعليًا:
++    // بندوّر إن كان عند نفس اليوزر أوردر وصل لحالة DELIVERED فيه المنتج ده.
++    // "طلبه" مش كفاية عمدًا (أوردر لسه PROCESSING أو اتلغى مايأهلش) — لازم
++    // يكون استلمه فعليًا، وإلا كان أي حد يقدر يعمل review "verified" بمجرد
++    // إنه يحط المنتج في أوردر من غير ما يشتريه فعلاً لحد النهاية.
++    const verified = await this.ordersRepository.hasDeliveredOrderForProduct(
++      user.id,
++      productId,
++    );
++
+     const review = await this.reviewsRepository.create({
+       productId,
+       userId: user.id,
+       name: user.name,
+       rating: dto.rating,
+       text: dto.text,
+-      verified: false,
++      verified,
+     });
+ 
+     // بنحدّث rating/reviewCount المخزّنة على المنتج نفسه — ده اللي بيخلي
+-- 
+2.43.0
